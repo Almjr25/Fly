@@ -1,0 +1,386 @@
+{
+  "version": 1,
+  "active": "migration-company",
+  "companies": [
+    {
+      "id": "migration-company",
+      "name": "Empresa de teste de migração",
+      "accounts": [
+        {
+          "id": "legacy-1",
+          "code": "1",
+          "name": "Ativo",
+          "kind": "asset",
+          "postable": false,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-2",
+          "code": "1.1",
+          "name": "Ativo circulante",
+          "kind": "asset",
+          "postable": false,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-3",
+          "code": "1.1.01",
+          "name": "Caixa",
+          "kind": "asset",
+          "postable": true,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-4",
+          "code": "1.1.02",
+          "name": "Bancos conta movimento",
+          "kind": "asset",
+          "postable": true,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-5",
+          "code": "1.1.03",
+          "name": "Clientes",
+          "kind": "asset",
+          "postable": true,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-6",
+          "code": "1.1.04",
+          "name": "Estoques",
+          "kind": "asset",
+          "postable": true,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-7",
+          "code": "1.2",
+          "name": "Ativo não circulante",
+          "kind": "asset",
+          "postable": false,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-8",
+          "code": "1.2.01",
+          "name": "Imobilizado",
+          "kind": "asset",
+          "postable": true,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-9",
+          "code": "1.2.02",
+          "name": "Depreciação acumulada",
+          "kind": "asset",
+          "postable": true,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-10",
+          "code": "2",
+          "name": "Passivo",
+          "kind": "liability",
+          "postable": false,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-11",
+          "code": "2.1",
+          "name": "Passivo circulante",
+          "kind": "liability",
+          "postable": false,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-12",
+          "code": "2.1.01",
+          "name": "Fornecedores",
+          "kind": "liability",
+          "postable": true,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-13",
+          "code": "2.1.02",
+          "name": "Tributos a recolher",
+          "kind": "liability",
+          "postable": true,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-14",
+          "code": "2.1.03",
+          "name": "Obrigações trabalhistas",
+          "kind": "liability",
+          "postable": true,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-15",
+          "code": "2.2",
+          "name": "Passivo não circulante",
+          "kind": "liability",
+          "postable": false,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-16",
+          "code": "2.2.01",
+          "name": "Empréstimos de longo prazo",
+          "kind": "liability",
+          "postable": true,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-17",
+          "code": "3",
+          "name": "Patrimônio líquido",
+          "kind": "equity",
+          "postable": false,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-18",
+          "code": "3.1",
+          "name": "Capital e resultados",
+          "kind": "equity",
+          "postable": false,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-19",
+          "code": "3.1.01",
+          "name": "Capital social",
+          "kind": "equity",
+          "postable": true,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-20",
+          "code": "3.1.02",
+          "name": "Lucros ou prejuízos acumulados",
+          "kind": "equity",
+          "postable": true,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-21",
+          "code": "4",
+          "name": "Receitas",
+          "kind": "revenue",
+          "postable": false,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-22",
+          "code": "4.1",
+          "name": "Receitas operacionais",
+          "kind": "revenue",
+          "postable": false,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-23",
+          "code": "4.1.01",
+          "name": "Receita de serviços",
+          "kind": "revenue",
+          "postable": true,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-24",
+          "code": "4.1.02",
+          "name": "Receita de vendas",
+          "kind": "revenue",
+          "postable": true,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-25",
+          "code": "4.1.03",
+          "name": "Deduções da receita",
+          "kind": "revenue",
+          "postable": true,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-26",
+          "code": "4.2",
+          "name": "Outras receitas",
+          "kind": "revenue",
+          "postable": false,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-27",
+          "code": "4.2.01",
+          "name": "Receitas financeiras",
+          "kind": "revenue",
+          "postable": true,
+          "normal": "C"
+        },
+        {
+          "id": "legacy-28",
+          "code": "5",
+          "name": "Despesas e custos",
+          "kind": "expense",
+          "postable": false,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-29",
+          "code": "5.1",
+          "name": "Custos",
+          "kind": "expense",
+          "postable": false,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-30",
+          "code": "5.1.01",
+          "name": "Custos dos serviços e mercadorias",
+          "kind": "expense",
+          "postable": true,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-31",
+          "code": "5.2",
+          "name": "Despesas operacionais",
+          "kind": "expense",
+          "postable": false,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-32",
+          "code": "5.2.01",
+          "name": "Despesas administrativas",
+          "kind": "expense",
+          "postable": true,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-33",
+          "code": "5.2.02",
+          "name": "Salários e encargos",
+          "kind": "expense",
+          "postable": true,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-34",
+          "code": "5.2.03",
+          "name": "Aluguéis",
+          "kind": "expense",
+          "postable": true,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-35",
+          "code": "5.2.04",
+          "name": "Despesas financeiras",
+          "kind": "expense",
+          "postable": true,
+          "normal": "D"
+        },
+        {
+          "id": "legacy-36",
+          "code": "5.2.05",
+          "name": "Depreciação",
+          "kind": "expense",
+          "postable": true,
+          "normal": "D"
+        }
+      ],
+      "entries": [
+        {
+          "id": "entry-1",
+          "number": 1,
+          "date": "2026-01-01",
+          "memo": "Abertura",
+          "reference": "",
+          "lines": [
+            {
+              "account": "legacy-4",
+              "debit": 100000,
+              "credit": 0
+            },
+            {
+              "account": "legacy-19",
+              "debit": 0,
+              "credit": 100000
+            }
+          ]
+        },
+        {
+          "id": "entry-2",
+          "number": 2,
+          "date": "2026-02-01",
+          "memo": "Receita",
+          "reference": "",
+          "lines": [
+            {
+              "account": "legacy-4",
+              "debit": 50000,
+              "credit": 0
+            },
+            {
+              "account": "legacy-23",
+              "debit": 0,
+              "credit": 50000
+            }
+          ]
+        },
+        {
+          "id": "entry-3",
+          "number": 3,
+          "date": "2026-03-01",
+          "memo": "Despesa",
+          "reference": "",
+          "lines": [
+            {
+              "account": "legacy-32",
+              "debit": 10000,
+              "credit": 0
+            },
+            {
+              "account": "legacy-4",
+              "debit": 0,
+              "credit": 10000
+            }
+          ]
+        },
+        {
+          "id": "closing",
+          "number": 4,
+          "date": "2026-12-31",
+          "memo": "Encerramento",
+          "reference": "ENC-2026",
+          "year": 2026,
+          "closing": true,
+          "target": "legacy-20",
+          "lines": [
+            {
+              "account": "legacy-23",
+              "debit": 50000,
+              "credit": 0
+            },
+            {
+              "account": "legacy-32",
+              "debit": 0,
+              "credit": 10000
+            },
+            {
+              "account": "legacy-20",
+              "debit": 0,
+              "credit": 40000
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

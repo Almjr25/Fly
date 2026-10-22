@@ -6,18 +6,31 @@ Aplicativo básico para escrituração contábil por um contador, em um único H
 
 1. Salve `index.html` no computador e abra no navegador.
 2. Crie uma empresa e ajuste o plano de contas em **Plano de contas**.
-3. Em **Lançamentos**, registre a abertura dos saldos como um lançamento comum. Depois registre os movimentos. Cada lançamento aceita várias partidas; os débitos e créditos devem conferir.
+3. Em **Lançamentos**, use o formulário permanente no topo da tela para registrar a abertura dos saldos como um lançamento comum. Depois registre os movimentos. Cada lançamento aceita várias partidas; os débitos e créditos devem conferir.
 4. Consulte **Balancete**, **Razão**, **Diário**, **Balanço** e **DRE**, ajustando e aplicando o período.
 5. Exporte regularmente um **Backup JSON**. Para recuperar ou transferir dados, use **Dados e empresas → Restaurar backup JSON**.
 
 Não é necessário instalar Node, Python ou qualquer dependência para usar o HTML. Não há transmissão dos dados nem sincronização online. O cadastro começa vazio; as empresas utilizadas pelos testes não fazem parte do aplicativo.
 
+## Plano de contas e pesquisa visual
+
+O plano inicial usa **1 — Ativo**, **2 — Passivo e patrimônio líquido**, **3 — Receitas** e **4 — Despesas e custos**. O passivo circulante fica em `2.1`, o não circulante em `2.2` e o patrimônio líquido em `2.3`. As fontes dos grupos usam azul `#245FA5`, cobre `#B65B22`, roxo `#79509C`, verde `#247A46` e vermelho `#BB3944`, respectivamente.
+
+Ao atualizar uma instalação ou restaurar um backup da versão anterior, os códigos de PL, receitas e despesas são migrados, preservando IDs, lançamentos, saldos e destinos de encerramento. Se uma empresa já usa `2.3` para um ramo do passivo, o PL recebe o próximo ramo disponível. Na atualização dos dados locais, o sistema guarda uma cópia anterior à migração, disponível em **Dados e empresas → Backup anterior à atualização**. Backups antigos também podem ser restaurados diretamente.
+
+Faça um backup JSON antes de substituir o HTML por uma versão nova. Mantenha o mesmo nome e caminho do arquivo para preservar o acesso ao armazenamento local; se mudar de navegador ou endereço, restaure o backup.
+
+Ao lançar, digite parte do código ou do nome da conta. As sugestões aparecem numa caixa flutuante com rolagem e fade, sem completar ou substituir o texto digitado. Clique numa opção ou use **↑/↓** e **Enter** para confirmar; **Esc** fecha as sugestões. Somente contas analíticas são sugeridas e uma conta deve ser selecionada explicitamente. A busca ignora acentos e não corta a lista de resultados.
+
+O formulário fica permanentemente junto da listagem, sem os boxes de resumo anteriores. Em telas de computador, a área de trabalho é compacta, com rolagem interna para listas e muitas partidas; em telas pequenas, a página pode rolar para manter os campos acessíveis. Rascunhos são mantidos em memória por empresa ao navegar ou aplicar filtros; para persistir após fechar a página, salve o lançamento.
+
 ## Editar e excluir pelo relatório
 
 - No razão e no diário, selecione uma partida para abrir o lançamento completo.
 - No balanço, balancete e DRE, selecione uma conta analítica para abrir seu razão e, em seguida, o lançamento.
-- A janela de edição permite alterar todas as partidas ou **Excluir lançamento**, com confirmação. A exclusão é permanente; use backup para recuperação.
+- Na tela de lançamentos, a edição usa o formulário permanente; nos relatórios, abre a janela de edição. Ambos permitem alterar todas as partidas ou **Excluir lançamento**, com confirmação. A exclusão é permanente; use backup para recuperação.
 - O balanço abre o razão acumulado desde 1900 até sua data de posição. Os demais relatórios preservam o período selecionado.
+- O razão mostra os códigos das contas de contrapartida em cada partida. Em lançamentos compostos, mostra todas as contas do lado oposto (sem inventar uma correspondência única entre partidas). A coluna **Documento** só aparece quando pelo menos um lançamento exibido da conta e do período tem documento preenchido; a mesma regra vale para o CSV do razão. Essa supressão não é aplicada à listagem principal.
 - O razão inclui encerramentos; por isso, seu saldo final pode ser zero mesmo quando a DRE apresenta movimento no período. A DRE exclui os encerramentos.
 
 ## Encerrar o resultado
@@ -60,6 +73,7 @@ Em outro terminal:
 
 ```sh
 node tests/browser.cjs
+node tests/workbench.cjs
 ```
 
-Se Playwright estiver instalado fora do projeto, informe seu diretório de módulos em `NODE_PATH`. `FLY_TEST_URL` permite mudar o endereço usado no teste. O teste abre um perfil isolado e verifica criação, edição e exclusão, relatórios, encerramento/recálculo, persistência, separação de empresas, backup/restauração, exportação CSV, gravação sem rede e falha de armazenamento. O servidor é usado apenas na validação automatizada, não faz parte do aplicativo. A política do Chromium deste ambiente bloqueia navegação direta a `file://`; por isso essa modalidade de abertura não foi validada aqui.
+Se Playwright estiver instalado fora do projeto, informe seu diretório de módulos em `NODE_PATH`. `FLY_TEST_URL` permite mudar o endereço usado no teste. Os testes abrem perfis isolados e verificam criação, edição e exclusão, relatórios, encerramento/recálculo, persistência, separação de empresas, backup/restauração, exportação CSV, gravação sem rede e falha de armazenamento. A suíte `workbench.cjs` também verifica migração de dados antigos, preservação de rascunhos, cores, sugestões clicáveis e por teclado, contrapartidas e Documento condicional, além do encaixe em 1366×768 e 1280×720. O servidor é usado apenas na validação automatizada, não faz parte do aplicativo. A política do Chromium deste ambiente bloqueia navegação direta a `file://`; por isso essa modalidade de abertura não foi validada aqui.
