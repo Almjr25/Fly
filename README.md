@@ -1,5 +1,7 @@
 # Fly — Contabilidade local
 
+Versão atual: **1.2.0**, identificada no cabeçalho e no título da janela.
+
 Aplicativo básico para escrituração contábil por um contador, em um único HTML, sem servidor, bibliotecas externas, login ou conexão com a internet.
 
 ## Usar
@@ -32,6 +34,20 @@ O formulário fica permanentemente junto da listagem, sem os boxes de resumo ant
 - O balanço abre o razão acumulado desde 1900 até sua data de posição. Os demais relatórios preservam o período selecionado.
 - O razão mostra os códigos das contas de contrapartida em cada partida. Em lançamentos compostos, mostra todas as contas do lado oposto (sem inventar uma correspondência única entre partidas). A coluna **Documento** só aparece quando pelo menos um lançamento exibido da conta e do período tem documento preenchido; a mesma regra vale para o CSV do razão. Essa supressão não é aplicada à listagem principal.
 - O razão inclui encerramentos; por isso, seu saldo final pode ser zero mesmo quando a DRE apresenta movimento no período. A DRE exclui os encerramentos.
+
+Clicar novamente numa conta já selecionada no formulário mantém a edição da partida: não abre o cadastro da conta. Alterações cadastrais são feitas exclusivamente em **Plano de contas**.
+
+## Lançamentos repetitivos
+
+Use **Duplicar** na linha de um lançamento ou na sua edição (inclusive quando aberta por um relatório). O programa prepara um novo lançamento com as contas, valores, histórico e documento da origem, deixando a **data em branco**. Revise os dados — especialmente o documento — e informe a data. Ao salvar, confirme a data na mensagem apresentada.
+
+A cópia só é gravada após a confirmação, recebe novo identificador e número e não altera o lançamento de origem. Se cancelar a confirmação, o formulário permanece disponível para revisão. Havendo alterações não salvas no formulário atual, o programa pede confirmação antes de substituí-las pela cópia do lançamento salvo. Encerramentos automáticos devem ser gerados pela rotina própria e não têm ação de duplicação.
+
+## Contas sintéticas no balancete
+
+No **Balancete**, o botão **Mostrar contas sintéticas / Esconder contas sintéticas** alterna entre somente analíticas e a hierarquia completa. Cada sintética totaliza as contas analíticas descendentes, incluindo seus saldos anteriores e movimentos do período. O grupo `2` inclui tanto passivo quanto patrimônio líquido. O total geral soma apenas as analíticas e permanece igual ao alternar a exibição.
+
+A exportação CSV segue a opção exibida e identifica o tipo de cada conta. A escolha é mantida enquanto o programa permanece aberto. A consulta ao razão continua disponível pelos nomes das contas analíticas.
 
 ## Encerrar o resultado
 
@@ -74,6 +90,7 @@ Em outro terminal:
 ```sh
 node tests/browser.cjs
 node tests/workbench.cjs
+node tests/version-1.2.cjs
 ```
 
-Se Playwright estiver instalado fora do projeto, informe seu diretório de módulos em `NODE_PATH`. `FLY_TEST_URL` permite mudar o endereço usado no teste. Os testes abrem perfis isolados e verificam criação, edição e exclusão, relatórios, encerramento/recálculo, persistência, separação de empresas, backup/restauração, exportação CSV, gravação sem rede e falha de armazenamento. A suíte `workbench.cjs` também verifica migração de dados antigos, preservação de rascunhos, cores, sugestões clicáveis e por teclado, contrapartidas e Documento condicional, além do encaixe em 1366×768 e 1280×720. O servidor é usado apenas na validação automatizada, não faz parte do aplicativo. A política do Chromium deste ambiente bloqueia navegação direta a `file://`; por isso essa modalidade de abertura não foi validada aqui.
+Se Playwright estiver instalado fora do projeto, informe seu diretório de módulos em `NODE_PATH`. `FLY_TEST_URL` permite mudar o endereço usado no teste. Os testes abrem perfis isolados e verificam criação, edição e exclusão, relatórios, encerramento/recálculo, persistência, separação de empresas, backup/restauração, exportação CSV, gravação sem rede e falha de armazenamento. A suíte `workbench.cjs` também verifica migração de dados antigos, preservação de rascunhos, cores, sugestões clicáveis e por teclado, contrapartidas e Documento condicional, além do encaixe em 1366×768 e 1280×720. A suíte `version-1.2.cjs` verifica o clique em contas selecionadas, a duplicação com confirmação da data, a identificação da versão e o balancete sintético, inclusive seu CSV e a preservação dos totais. O servidor é usado apenas na validação automatizada, não faz parte do aplicativo. A política do Chromium deste ambiente bloqueia navegação direta a `file://`; por isso essa modalidade de abertura não foi validada aqui.
