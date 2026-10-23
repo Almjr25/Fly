@@ -1,6 +1,6 @@
 # Fly — Contabilidade local
 
-Versão atual: **1.2.0**, identificada no cabeçalho e no título da janela.
+Versão atual: **1.3.0**, identificada no cabeçalho e no título da janela.
 
 Aplicativo básico para escrituração contábil por um contador, em um único HTML, sem servidor, bibliotecas externas, login ou conexão com a internet.
 
@@ -59,9 +59,19 @@ A DRE básica apresenta receitas, deduções, despesas/custos e resultado. O bal
 
 ## Dados locais e backups
 
-Os dados são gravados em `localStorage`, separadamente por navegador/perfil e conforme as regras de armazenamento de cada navegador para arquivos locais. Não são gravados dentro do HTML. Mantenha o arquivo no mesmo local: renomear ou mover o HTML pode mudar o armazenamento acessível. Navegadores e computadores diferentes não compartilham dados. Limpar dados do navegador ou usar navegação privada pode apagá-los. O armazenamento disponível também tem limite.
+Os dados são gravados em **IndexedDB**, um banco local nativo do navegador, em registros separados para empresas, contas e lançamentos. Cada alteração grava apenas os registros afetados, em uma transação: se a gravação falhar, os dados anteriores são mantidos. A tela só confirma sucesso após a transação terminar. Não há servidor ou transmissão dos dados.
 
-O backup JSON contém todas as empresas e seus lançamentos, sem criptografia. A restauração valida os dados antes de substituir o banco local inteiro e exige confirmação. Guarde uma cópia antes de restaurar. Falhas ao gravar não são apresentadas como sucesso; dados inválidos existentes não são sobrescritos automaticamente. Use uma única aba para escriturar; alterações detectadas em outra aba exigem recarregamento.
+Ao abrir a versão 1.3.0 pela primeira vez, dados das versões anteriores presentes em `localStorage` são migrados automaticamente, preservando contas, lançamentos, números, saldos e encerramentos. A origem não é alterada nem apagada. Uma cópia anterior fica disponível em **Dados e empresas → Backup anterior à migração**; a cópia anterior à mudança do plano de contas, quando existente, também é preservada. Depois da migração, o IndexedDB é a fonte dos dados: o conteúdo antigo em `localStorage` não é atualizado. Não volte a usar um HTML anterior à 1.3.0, pois ele pode mostrar apenas os dados antigos.
+
+Faça backup na versão antiga antes de substituir o HTML. Mantenha o mesmo nome e caminho. Navegadores tratam o armazenamento de arquivos locais de formas diferentes; se a nova cópia abrir sem encontrar sua empresa, use **Restaurar backup JSON**. O navegador deve permitir IndexedDB. Se ele estiver indisponível, o Fly informa a falha e não cria silenciosamente um banco vazio; dados antigos acessíveis podem ser exportados pelo botão de backup.
+
+O banco é separado por navegador/perfil e conforme as regras de origem para arquivos locais. Os dados não ficam dentro do HTML. Mover o arquivo ou mudar de navegador pode mudar o armazenamento acessível. Limpar os dados do navegador, usar navegação privada ou uma política de limpeza pode apagar o banco e suas cópias internas. A capacidade é maior que a de `localStorage`, mas depende do espaço e da cota concedida pelo navegador; não é ilimitada. Cópias internas não substituem backups JSON fora do navegador.
+
+O backup JSON continua contendo todas as empresas e lançamentos, sem criptografia. Backups antigos de dados nas versões 1 e 2 são aceitos. A restauração valida o arquivo e substitui o banco inteiro apenas após confirmação e por transação, preservando o banco anterior se falhar. O limite por arquivo foi ampliado para **256 MiB**. Guarde uma cópia antes de restaurar.
+
+Use uma única aba para escriturar. Há controle de revisão por transação e aviso entre abas para impedir que uma aba antiga sobrescreva alterações de outra. Em caso de aviso, recarregue a página. Durante a gravação, novas ações são temporariamente bloqueadas. Esse controle não transforma o programa em um sistema de acesso simultâneo.
+
+A abertura ainda carrega os registros em memória e a listagem ainda monta todas as linhas do período selecionado. Filtre períodos menores para trabalhar com grandes volumes. Consulta paginada, carregamento por empresa/período e virtualização da listagem são melhorias futuras, separadas da migração do armazenamento. Veja [VALIDACAO-ARMAZENAMENTO.md](VALIDACAO-ARMAZENAMENTO.md) para os resultados de carga e os limites dos testes.
 
 Relatórios podem ser exportados em CSV separado por ponto e vírgula, com valores em formato brasileiro. Eles não substituem o backup JSON.
 
@@ -91,6 +101,8 @@ Em outro terminal:
 node tests/browser.cjs
 node tests/workbench.cjs
 node tests/version-1.2.cjs
+node tests/storage.cjs
+node tests/storage-load.cjs
 ```
 
-Se Playwright estiver instalado fora do projeto, informe seu diretório de módulos em `NODE_PATH`. `FLY_TEST_URL` permite mudar o endereço usado no teste. Os testes abrem perfis isolados e verificam criação, edição e exclusão, relatórios, encerramento/recálculo, persistência, separação de empresas, backup/restauração, exportação CSV, gravação sem rede e falha de armazenamento. A suíte `workbench.cjs` também verifica migração de dados antigos, preservação de rascunhos, cores, sugestões clicáveis e por teclado, contrapartidas e Documento condicional, além do encaixe em 1366×768 e 1280×720. A suíte `version-1.2.cjs` verifica o clique em contas selecionadas, a duplicação com confirmação da data, a identificação da versão e o balancete sintético, inclusive seu CSV e a preservação dos totais. O servidor é usado apenas na validação automatizada, não faz parte do aplicativo. A política do Chromium deste ambiente bloqueia navegação direta a `file://`; por isso essa modalidade de abertura não foi validada aqui.
+Se Playwright estiver instalado fora do projeto, informe seu diretório de módulos em `NODE_PATH`. `FLY_TEST_URL` permite mudar o endereço usado no teste. Os testes abrem perfis isolados e verificam criação, edição e exclusão, relatórios, encerramento/recálculo, persistência, separação de empresas, backup/restauração, exportação CSV, gravação sem rede e falha de armazenamento. A suíte `workbench.cjs` também verifica migração de dados antigos, preservação de rascunhos, cores, sugestões clicáveis e por teclado, contrapartidas e Documento condicional, além do encaixe em 1366×768 e 1280×720. A suíte `version-1.2.cjs` verifica o clique em contas selecionadas, a duplicação com confirmação da data, a identificação da versão e o balancete sintético, inclusive seu CSV e a preservação dos totais. As suítes `storage.cjs` e `storage-load.cjs` usam IndexedDB real e verificam transações, migração, recuperação, reinício do navegador e carga de 80 mil lançamentos. O servidor é usado apenas na validação automatizada, não faz parte do aplicativo. A política do Chromium deste ambiente bloqueia navegação direta a `file://`; por isso essa modalidade de abertura não foi validada aqui.

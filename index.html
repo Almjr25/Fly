@@ -23,12 +23,12 @@ body.entries-view main{overflow:auto}.entries-workspace{grid-template-rows:auto 
 <body>
 <header><div class="brand">Fly<span id="appVersion" class="version-badge" aria-label="Versão do programa"></span><span>Contabilidade • local e offline</span></div><div class="header-actions"><label style="color:#c4d2e6">Empresa<select id="companySelect" aria-label="Empresa ativa"></select></label><button id="newCompany">+ Empresa</button><button id="backupTop">Backup JSON</button></div></header>
 <nav id="nav" aria-label="Navegação principal"></nav>
-<main id="main"></main><div class="footer">Os dados ficam neste navegador. Faça backups regularmente e antes de limpar dados de navegação ou trocar de computador.</div>
+<main id="main"></main><div class="footer"><span id="storageStatus" role="status"></span> Os dados ficam neste navegador. Faça backups regularmente e antes de limpar dados de navegação ou trocar de computador.</div>
 <dialog id="dialog"><div id="dialogContent"></div></dialog><div id="toast" role="status" hidden></div>
 <script>
 'use strict';
 const KEY='fly.contabilidade.v1';
-const APP_VERSION='1.2.0';
+const APP_VERSION='1.3.0';
 const money=n=>((n||0)/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const dec=n=>((n||0)/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -87,23 +87,167 @@ function migrateDB(data){
  }
  return validateDB(next);
 }
-let db={version:2,active:null,companies:[]},loadError='',savedRecord=null;
+const DATABASE_NAME='fly-contabilidade';
+const DATABASE_VERSION=1;
+function equalRecord(a,b){if(a===b)return true;if(!a||!b)return false;const keys=Object.keys(a);return keys.length===Object.keys(b).length&&keys.every(k=>a[k]===b[k]);}
+function companyRecord(c){const {accounts,entries,...metadata}=c;return metadata;}
+function databaseChanges(previous,next,replace=false){
+ const changes=[];
+ if(replace)for(const store of ['companies','accounts','entries'])changes.push({store,action:'clear'});
+ const oldCompanies=new Map((replace?[]:previous.companies).map(c=>[c.id,c]));
+ const seen=new Set();
+ if(next.version!==2||!Array.isArray(next.companies)||next.companies.length>500)throw Error('Banco de dados inválido.');
+ for(const c of next.companies){
+  if(seen.has(c.id))throw Error('Empresa duplicada.');seen.add(c.id);
+  const old=oldCompanies.get(c.id);if(old===c){oldCompanies.delete(c.id);continue;}const metadata=companyRecord(c);
+  let changed=!old||!equalRecord(companyRecord(old),metadata);
+  if(changed)changes.push({store:'companies',action:'put',value:{id:c.id,data:metadata}});
+  for(const [store,records] of [['accounts',c.accounts],['entries',c.entries]]){
+   const before=new Map((old?.[store]||[]).map(r=>[r.id,r]));
+   for(const record of records){if(!equalRecord(before.get(record.id),record)){changed=true;changes.push({store,action:'put',value:{company:c.id,id:record.id,...(store==='entries'?{date:record.date,number:record.number}:{}),data:record}});}before.delete(record.id);}
+   for(const id of before.keys()){changed=true;changes.push({store,action:'delete',key:[c.id,id]});}
+  }
+  if(changed)validateDB({version:2,companies:[c]});
+  oldCompanies.delete(c.id);
+ }
+ for(const c of oldCompanies.values()){
+  changes.push({store:'companies',action:'delete',key:c.id});
+  for(const store of ['accounts','entries'])for(const r of c[store])changes.push({store,action:'delete',key:[c.id,r.id]});
+ }
+ return changes;
+}
+class IndexedStorage{
+ constructor(){this.connection=null;}
+ async open(){
+  if(this.connection)return;
+  if(!globalThis.indexedDB)throw Error('IndexedDB não está disponível neste navegador. Abra o Fly em um navegador compatível e permita o armazenamento local.');
+  this.connection=await new Promise((resolve,reject)=>{
+   let blocked=false;const request=indexedDB.open(DATABASE_NAME,DATABASE_VERSION);
+   request.onupgradeneeded=()=>{
+    const connection=request.result;
+    connection.createObjectStore('meta',{keyPath:'key'});
+    connection.createObjectStore('companies',{keyPath:'id'});
+    for(const name of ['accounts','entries']){
+     const store=connection.createObjectStore(name,{keyPath:['company','id']});store.createIndex('company','company');
+     if(name==='entries'){store.createIndex('companyDate',['company','date']);store.createIndex('companyNumber',['company','number'],{unique:true});}
+    }
+    connection.createObjectStore('archives',{keyPath:'id'});
+   };
+   request.onblocked=()=>{blocked=true;reject(Error('Feche outras abas do Fly e recarregue para concluir a atualização do banco local.'));};
+   request.onerror=()=>reject(request.error||Error('Não foi possível abrir o banco local.'));
+   request.onsuccess=()=>{if(blocked){request.result.close();return;}resolve(request.result);};
+  });
+  this.connection.onversionchange=()=>{this.connection.close();this.connection=null;markStorageStale('O banco local foi atualizado em outra aba. Recarregue esta página antes de continuar.');};
+ }
+ async read(){
+  await this.open();
+  const records=await new Promise((resolve,reject)=>{
+   const tx=this.connection.transaction(['meta','companies','accounts','entries'],'readonly'),out={};
+   for(const store of ['companies','accounts','entries']){const r=tx.objectStore(store).getAll();r.onsuccess=()=>out[store]=r.result;}
+   const state=tx.objectStore('meta').get('state');state.onsuccess=()=>out.state=state.result;
+   tx.oncomplete=()=>resolve(out);tx.onabort=()=>reject(tx.error||Error('Falha ao ler o banco local.'));tx.onerror=()=>{};
+  });
+  if(!records.state){if(records.companies.length||records.accounts.length||records.entries.length)throw Error('Banco local incompleto. Os dados foram preservados; restaure um backup após verificar o armazenamento.');return {initialized:false,data:{version:2,active:null,companies:[]},revision:null,archives:[]};}
+  if(records.state.version!==2||typeof records.state.revision!=='string'||!records.state.revision)throw Error('Revisão do banco local inválida. Nenhum dado foi sobrescrito.');
+  if(records.companies.some(r=>r.id!==r.data?.id))throw Error('Cadastro de empresa inconsistente no banco local.');
+  const companies=new Map(records.companies.map(r=>[r.id,{...r.data,accounts:[],entries:[]}]));
+  for(const store of ['accounts','entries'])for(const record of records[store]){
+   const c=companies.get(record.company);if(!c||record.id!==record.data?.id||(store==='entries'&&(record.date!==record.data.date||record.number!==record.data.number)))throw Error('Há registros sem empresa válida no banco local. Nenhum dado foi sobrescrito.');c[store].push(record.data);
+  }
+  const order=records.state.order;if(!Array.isArray(order)||order.length!==companies.size||new Set(order).size!==order.length||order.some(id=>!companies.has(id)))throw Error('Índice de empresas inconsistente. Nenhum dado foi sobrescrito.');
+  const data={version:2,active:records.state.active,companies:order.map(id=>companies.get(id))};
+  for(const c of data.companies){c.accounts.sort(compare);c.entries.sort((a,b)=>a.number-b.number);}
+  validateDB(data);
+  return {initialized:true,data,revision:records.state.revision,archives:records.state.archives||[]};
+ }
+ async write(expectedRevision,changes,next,archives=[]){
+  await this.open();const revision=uid();
+  await new Promise((resolve,reject)=>{
+   const tx=this.connection.transaction(['meta','companies','accounts','entries','archives'],'readwrite',{durability:'strict'});let cause=null;
+   tx.oncomplete=resolve;tx.onerror=()=>{};tx.onabort=()=>reject(cause||tx.error||Error('Não foi possível salvar. A transação foi cancelada e os dados anteriores foram preservados.'));
+   const request=tx.objectStore('meta').get('state');
+   request.onsuccess=()=>{
+    try{
+     const state=request.result;if((state?.revision||null)!==expectedRevision)throw Error('Os dados foram alterados em outra aba. Recarregue antes de salvar para evitar sobrescrever alterações.');
+     for(const op of changes){const store=tx.objectStore(op.store);if(op.action==='put')store.put(op.value);else if(op.action==='delete')store.delete(op.key);else store.clear();}
+     for(const archive of archives)tx.objectStore('archives').put(archive);
+     tx.objectStore('meta').put({key:'state',version:2,revision,active:next.active,order:next.companies.map(c=>c.id),archives:[...new Set([...(state?.archives||[]),...archives.map(a=>a.id)])]});
+    }catch(e){cause=e;tx.abort();}
+   };
+  });
+  return revision;
+ }
+ async state(){await this.open();return new Promise((resolve,reject)=>{const tx=this.connection.transaction('meta','readonly'),r=tx.objectStore('meta').get('state');let state;r.onsuccess=()=>state=r.result;tx.oncomplete=()=>resolve(state);tx.onabort=()=>reject(tx.error||Error('Falha ao ler a revisão do banco local.'));});}
+ async archive(id){await this.open();return new Promise((resolve,reject)=>{const tx=this.connection.transaction('archives','readonly'),r=tx.objectStore('archives').get(id);r.onsuccess=()=>resolve(r.result?.text||null);r.onerror=()=>reject(r.error);});}
+}
+
+let db={version:2,active:null,companies:[]},loadError='',savedRevision=null,storageBusy=false,legacySource='',legacyArchives=[];
+const storage=new IndexedStorage();
+let storageChannel=null;
 const entryDrafts=new Map();
-try{const stored=localStorage.getItem(KEY);savedRecord=stored;if(stored){const parsed=JSON.parse(stored),next=migrateDB(parsed);if(parsed.version===1){if(!localStorage.getItem(KEY+'.antes-plano-v2'))localStorage.setItem(KEY+'.antes-plano-v2',stored);const upgraded=JSON.stringify(next);localStorage.setItem(KEY,upgraded);savedRecord=upgraded;}db=next;}}catch(e){loadError='Não foi possível ler os dados locais. Os dados existentes não serão sobrescritos. Exporte os dados locais originais ou restaure um backup válido. Detalhe: '+e.message;}
+
 let tab='entries',from=today().slice(0,4)+'-01-01',to=today().slice(0,4)+'-12-31',accountFilter='',search='',dialogDirty=false,showSynthetic=false;
 const company=()=>db.companies.find(c=>c.id===db.active)||db.companies[0];
-function commit(next,restore=false){if(!restore&&(loadError||localStorage.getItem(KEY)!==savedRecord))throw Error('Os dados locais foram alterados ou não puderam ser lidos. Recarregue a página antes de salvar.');validateDB(next);const data=JSON.stringify(next);localStorage.setItem(KEY,data);savedRecord=data;db=next;loadError='';}
-function mutate(fn,afterCommit){const next=structuredClone(db);fn(next,next.companies.find(c=>c.id===(company()?.id)));commit(next);afterCommit?.();render();}
+function storageError(e){return e?.name==='QuotaExceededError'?'Não há espaço disponível para salvar no navegador. A gravação foi cancelada; os dados anteriores foram preservados. Exporte um backup e libere espaço.':e?.message||String(e);}
+function setStorageBusy(busy){
+ storageBusy=busy;document.body.setAttribute('aria-busy',String(busy));
+ if(busy){setStorageBusy.controls=[...document.querySelectorAll('header,nav,form')].flatMap(root=>[...root.querySelectorAll('button,input,select,textarea')]).map(el=>({el,disabled:el.disabled}));for(const {el} of setStorageBusy.controls)el.disabled=true;}
+ else{for(const {el,disabled} of setStorageBusy.controls||[])if(el.isConnected)el.disabled=disabled;}
+ const status=document.querySelector('#storageStatus');if(status)status.textContent=busy?'Gravando no banco local…':'';
+}
+async function commit(next,restore=false){
+ if(loadError&&!restore)throw Error(loadError);
+ let base=db,expected=savedRevision;
+ if(restore){const state=await storage.state();base={version:2,active:null,companies:[]};expected=state?.revision||null;}
+ const changes=databaseChanges(base,next,restore),revision=await storage.write(expected,changes,next);
+ db=next;savedRevision=revision;loadError='';try{storageChannel?.postMessage({revision});}catch{}
+}
+async function mutate(fn,afterCommit){
+ if(storageBusy)throw Error('Aguarde a gravação atual terminar.');if(loadError)throw Error(loadError);
+ setStorageBusy(true);
+ try{
+  const selected=company()?.id;
+  // Only the selected company is prepared for edits. Ordinary entries and line arrays remain shared until replaced.
+  const next={...db,companies:db.companies.map(c=>c.id===selected?{...c,accounts:[...c.accounts],entries:c.entries.map(e=>e.closing?{...e}:e)}:c)};
+  fn(next,next.companies.find(c=>c.id===selected));await commit(next);afterCommit?.();render();
+ }catch(e){throw Error(storageError(e));}finally{setStorageBusy(false);}
+}
+async function boot(){
+ document.querySelector('#main').innerHTML='<div class="card"><p role="status">Carregando dados locais…</p></div>';setStorageBusy(true);
+ try{
+  let snapshot=await storage.read();
+  if(!snapshot.initialized){
+   legacySource=localStorage.getItem(KEY)||'';
+   const data=legacySource?migrateDB(JSON.parse(legacySource)):{version:2,active:null,companies:[]},archives=[];
+   if(legacySource)archives.push({id:'before-indexeddb',text:legacySource});
+   const older=localStorage.getItem(KEY+'.antes-plano-v2');
+   if(older)archives.push({id:'before-plan',text:older});else if(legacySource&&JSON.parse(legacySource).version===1)archives.push({id:'before-plan',text:legacySource});
+   await storage.write(null,databaseChanges(snapshot.data,data),data,archives);snapshot=await storage.read();
+  }
+  db=snapshot.data;savedRevision=snapshot.revision;legacyArchives=snapshot.archives;loadError='';
+  try{if(typeof BroadcastChannel!=='undefined'){storageChannel=new BroadcastChannel('fly-storage');storageChannel.onmessage=e=>{if(e.data?.revision!==savedRevision&&!storageBusy)markStorageStale('Os dados foram alterados em outra aba. Recarregue antes de salvar para evitar sobrescrever alterações.');};}}catch{storageChannel=null;}
+ }catch(e){try{legacySource=localStorage.getItem(KEY)||legacySource;}catch{}loadError='Não foi possível abrir ou migrar os dados locais. Nenhum dado anterior foi substituído. '+storageError(e);}
+ finally{setStorageBusy(false);render();document.body.dataset.storageReady='true';}
+}
+function markStorageStale(message){loadError=message;const p=document.querySelector('#pageError');if(p){p.textContent=message;p.hidden=false;}}
+
 function toast(s){const t=document.querySelector('#toast');t.textContent=s;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,5000);}
-function safe(fn){try{fn();}catch(e){showError(e.message);}}
+async function safe(fn){try{await fn();}catch(e){showError(storageError(e));}}
 function showError(msg){const el=document.querySelector('#dialogError');if(document.querySelector('#dialog').open&&el)el.textContent=msg;else{const el=document.querySelector('#entryError')||document.querySelector('#pageError');el.textContent=msg;el.hidden=false;}}
 function download(name,text,type){const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function backup(){if(loadError){download('fly-dados-originais.json',localStorage.getItem(KEY)||'','application/json');return;}download(`fly-backup-${today()}.json`,JSON.stringify({...db,exportedAt:new Date().toISOString()},null,2),'application/json');toast('Backup exportado. Guarde o arquivo em um local seguro.');}
+async function backup(){
+ try{
+  const snapshot=await storage.read();if(!snapshot.initialized)throw Error('A migração ainda não foi concluída.');
+  download(`fly-backup-${today()}.json`,JSON.stringify({...snapshot.data,exportedAt:new Date().toISOString()},null,2),'application/json');toast('Backup exportado do banco local. Guarde o arquivo em um local seguro.');
+ }catch(e){if(legacySource){download('fly-dados-originais.json',legacySource,'application/json');toast('Dados anteriores à migração exportados.');}else throw e;}
+}
+async function archiveBackup(id){const text=await storage.archive(id);if(!text)throw Error('Cópia anterior não encontrada.');download(id==='before-plan'?'fly-antes-plano-v2.json':'fly-antes-indexeddb.json',text,'application/json');}
+
 function accountOptions(selected='',filter=()=>true){return company().accounts.filter(a=>a.postable&&filter(a)).sort(compare).map(a=>`<option style="color:${kindColors[a.kind]}" value="${esc(a.id)}" ${a.id===selected?'selected':''}>${esc(a.code+' — '+a.name)}</option>`).join('');}
 function openDialog(title,body,foot){const d=document.querySelector('#dialog');document.querySelector('#dialogContent').innerHTML=`<div class="dialog-head"><h2 style="margin:0">${esc(title)}</h2><button type="button" data-action="dismiss" aria-label="Fechar">✕</button></div><form id="dialogForm"><div class="dialog-body">${body}<div id="dialogError" class="error" role="alert"></div></div><div class="dialog-foot"><button type="button" data-action="dismiss">Cancelar</button>${foot}</div></form>`;dialogDirty=false;document.querySelector('#dialogForm').addEventListener('input',()=>dialogDirty=true);if(!d.open)d.showModal();}
 function dismiss(){closeAccountSuggestions();if(dialogDirty&&!confirm('Descartar as alterações deste formulário?'))return;document.querySelector('#dialog').close();dialogDirty=false;}
 function finishDialog(){closeAccountSuggestions();document.querySelector('#dialog').close();dialogDirty=false;}
-function companyDialog(edit=false){const c=edit?company():null;openDialog(edit?'Editar empresa':'Nova empresa',`<div class="grid"><label>Nome / razão social<input name="name" required maxlength="150" value="${esc(c?.name)}"></label><label>CNPJ (opcional)<input name="document" maxlength="30" value="${esc(c?.document)}"></label></div><p class="muted">Cada empresa tem seu próprio plano de contas e lançamentos. A abertura dos saldos é feita por lançamento contábil.</p>`,`<button class="primary">${edit?'Salvar':'Criar empresa'}</button>`);document.querySelector('#dialogForm').onsubmit=e=>{e.preventDefault();safe(()=>{if(loadError)throw Error('Restaure ou exporte os dados locais antes de criar empresas.');const f=new FormData(e.target),name=f.get('name').trim();if(!name)throw Error('Informe o nome.');mutate((next,co)=>{if(edit){co.name=name;co.document=f.get('document').trim();}else{const id=uid();next.companies.push({id,name,document:f.get('document').trim(),accounts:initialAccounts(),entries:[]});next.active=id;}});finishDialog();toast('Empresa salva.');});};}
+function companyDialog(edit=false){const c=edit?company():null;openDialog(edit?'Editar empresa':'Nova empresa',`<div class="grid"><label>Nome / razão social<input name="name" required maxlength="150" value="${esc(c?.name)}"></label><label>CNPJ (opcional)<input name="document" maxlength="30" value="${esc(c?.document)}"></label></div><p class="muted">Cada empresa tem seu próprio plano de contas e lançamentos. A abertura dos saldos é feita por lançamento contábil.</p>`,`<button class="primary">${edit?'Salvar':'Criar empresa'}</button>`);document.querySelector('#dialogForm').onsubmit=e=>{e.preventDefault();safe(async()=>{if(loadError)throw Error('Restaure ou exporte os dados locais antes de criar empresas.');const f=new FormData(e.target),name=f.get('name').trim();if(!name)throw Error('Informe o nome.');await mutate((next,co)=>{if(edit){co.name=name;co.document=f.get('document').trim();}else{const id=uid();next.companies.push({id,name,document:f.get('document').trim(),accounts:initialAccounts(),entries:[]});next.active=id;}});finishDialog();toast('Empresa salva.');});};}
 function invalidateClosings(c,date,except){for(const e of c.entries)if(e.closing&&e.id!==except&&e.date>=date)e.stale=true;}
 
 let accountSuggestions=null;
@@ -164,11 +308,11 @@ function mountEntryEditor(form,draft,inline){
  form.querySelector('.add-line').onclick=()=>{const l={account:'',query:'',debit:'',credit:''};draft.lines.push(l);add(l);changed();body.lastElementChild.querySelector('input').focus();};
  if(inline)form.querySelector('.clear-entry').onclick=()=>{if(draft.dirty&&!confirm('Descartar o lançamento em edição?'))return;entryDrafts.set(c.id,blankEntryDraft(draft.date||today()));render();};
  if(old&&!old.closing)form.querySelector('.duplicate-entry').onclick=()=>safe(()=>duplicateEntry(old.id,draft));
- if(old)form.querySelector('.delete-entry').onclick=()=>{if(!confirm(`Excluir permanentemente o lançamento #${old.number}?`))return;safe(()=>{mutate((_,co)=>{co.entries=co.entries.filter(e=>e.id!==old.id);invalidateClosings(co,old.date);},()=>{if(inline||entryDrafts.get(c.id)?.id===old.id)entryDrafts.set(c.id,blankEntryDraft(draft.date||today()));});if(!inline)finishDialog();toast('Lançamento excluído.');});};
- form.onsubmit=e=>{e.preventDefault();try{
+ if(old)form.querySelector('.delete-entry').onclick=()=>{if(!confirm(`Excluir permanentemente o lançamento #${old.number}?`))return;safe(async()=>{await mutate((_,co)=>{co.entries=co.entries.filter(e=>e.id!==old.id);invalidateClosings(co,old.date);},()=>{if(inline||entryDrafts.get(c.id)?.id===old.id)entryDrafts.set(c.id,blankEntryDraft(draft.date||today()));});if(!inline)finishDialog();toast('Lançamento excluído.');});};
+ form.onsubmit=async e=>{e.preventDefault();try{
   const entry={...old,id:old?.id||uid(),number:old?.number||c.entries.reduce((n,e)=>Math.max(n,e.number),0)+1,date:draft.date,reference:draft.reference.trim(),memo:draft.memo.trim(),lines:readLines()};
   if(old?.closing&&entry.date!==old.date)throw Error('O encerramento deve permanecer em 31/12 do exercício.');if(old?.closing)entry.stale=true;validateEntry(entry,c);if(draft.copiedFrom&&!confirm(`Salvar a cópia do lançamento #${draft.copiedFrom.number} com data ${fmtDate(entry.date)}?`))return;
-  mutate((_,co)=>{const i=co.entries.findIndex(e=>e.id===entry.id);if(i<0)co.entries.push(entry);else co.entries[i]=entry;invalidateClosings(co,[entry.date,old?.date||entry.date].sort()[0],entry.id);},()=>{if(inline)entryDrafts.set(c.id,blankEntryDraft(entry.date));});
+  await mutate((_,co)=>{const i=co.entries.findIndex(e=>e.id===entry.id);if(i<0)co.entries.push(entry);else co.entries[i]=entry;invalidateClosings(co,[entry.date,old?.date||entry.date].sort()[0],entry.id);},()=>{if(inline)entryDrafts.set(c.id,blankEntryDraft(entry.date));});
   if(!inline)finishDialog();else document.querySelector('#entryForm [name=memo]')?.focus();toast('Lançamento salvo. Relatórios atualizados.');
  }catch(err){const error=form.querySelector('[role="alert"]');error.textContent=err.message;error.hidden=false;}};
 }
@@ -187,10 +331,10 @@ function entryDialog(id){
 
 function accountDialog(id){if(tab!=='accounts')return;const c=company(),a=c.accounts.find(a=>a.id===id),used=c.entries.some(e=>e.lines.some(l=>l.account===id));openDialog(a?'Editar conta':'Nova conta',`<div class="grid"><label>Código hierárquico<input name="code" required pattern="[0-9]+(\\.[0-9]+)*" value="${esc(a?.code)}" placeholder="1.1.05"></label><label>Nome<input name="name" required maxlength="150" value="${esc(a?.name)}"></label><label>Grupo<select name="kind">${Object.entries(kinds).map(([k,v])=>`<option value="${k}" ${a?.kind===k?'selected':''}>${v}</option>`).join('')}</select></label><label>Tipo<select name="postable"><option value="true" ${a?.postable!==false?'selected':''}>Analítica — recebe lançamentos</option><option value="false" ${a?.postable===false?'selected':''}>Sintética — totaliza subcontas</option></select></label><label>Natureza esperada<select name="normal"><option value="D" ${a?.normal!=='C'?'selected':''}>Devedora</option><option value="C" ${a?.normal==='C'?'selected':''}>Credora</option></select></label></div><p class="muted">Use pontos para a hierarquia. Contas sintéticas totalizam os códigos abaixo delas. O grupo determina a apresentação no balanço/DRE; a natureza informa o saldo esperado. ${used?'Esta conta já possui lançamentos: seu grupo e código são preservados.':''}</p>`,`${a?'<button type="button" class="danger" id="deleteAccount">Excluir conta</button>':''}<button class="primary">Salvar conta</button>`);
 if(!a)document.querySelector('[name=kind]').onchange=e=>{document.querySelector('[name=normal]').value=creditKind(e.target.value)?'C':'D';};
-if(a)document.querySelector('#deleteAccount').onclick=()=>safe(()=>{if(used)throw Error('Não é possível excluir uma conta com lançamentos.');if(c.accounts.some(b=>b.code.startsWith(a.code+'.')))throw Error('Remova primeiro as subcontas.');if(!confirm('Excluir esta conta?'))return;mutate((_,co)=>co.accounts=co.accounts.filter(b=>b.id!==id));finishDialog();});
-document.querySelector('#dialogForm').onsubmit=e=>{e.preventDefault();safe(()=>{const f=new FormData(e.target),n={id:a?.id||uid(),code:f.get('code').trim(),name:f.get('name').trim(),kind:f.get('kind'),postable:f.get('postable')==='true',normal:f.get('normal')};if(!n.name||!/^\d+(\.\d+)*$/.test(n.code))throw Error('Informe código e nome válidos.');if(c.accounts.some(b=>b.id!==id&&b.code===n.code))throw Error('Já existe uma conta com esse código.');if(used&&(n.code!==a.code||n.kind!==a.kind||!n.postable))throw Error('Conta com lançamentos: código, grupo e tipo analítico não podem ser alterados.');if(a&&c.accounts.some(b=>b.code.startsWith(a.code+'.'))&&n.code!==a.code)throw Error('O código de uma conta com subcontas não pode ser alterado.');mutate((_,co)=>{const i=co.accounts.findIndex(b=>b.id===id);if(i<0)co.accounts.push(n);else co.accounts[i]=n;});finishDialog();toast('Plano de contas atualizado.');});};}
-function closingDialog(){const year=Number(to.slice(0,4)),c=company();openDialog('Encerrar resultado do exercício',`<div class="notice">A rotina zera os saldos de receitas e despesas até 31/12 e transfere o resultado para uma conta do patrimônio líquido. A DRE ignora as partidas de encerramento. Não é necessário usar uma conta transitória de apuração.</div><div class="grid"><label>Exercício<input type="number" min="1900" max="9999" name="year" value="${year}" required></label><label>Conta de destino do resultado<select name="target" required>${accountOptions(c.accounts.find(a=>a.kind==='equity'&&a.name==='Lucros ou prejuízos acumulados')?.id,a=>a.kind==='equity')}</select></label></div><p class="muted">Encerre os exercícios em ordem. Se houver alteração posterior dos lançamentos, o sistema sinaliza os encerramentos afetados; recalcule-os para atualizar os saldos.</p>`,`<button class="primary">Gerar encerramento</button>`);document.querySelector('#dialogForm').onsubmit=e=>{e.preventDefault();safe(()=>{const f=new FormData(e.target),y=Number(f.get('year')),target=f.get('target'),date=`${y}-12-31`;if(!validDate(date))throw Error('Exercício inválido.');if(c.entries.some(e=>e.closing&&e.year===y))throw Error('Esse exercício já possui encerramento. Use Recalcular encerramentos.');if(c.entries.some(e=>e.closing&&e.year>y))throw Error('Exclua os encerramentos posteriores ou recalcule-os após encerrar este exercício.');if(!c.accounts.some(a=>a.id===target&&a.kind==='equity'&&a.postable))throw Error('Escolha uma conta analítica do patrimônio líquido.');const lines=closeLines(c,date,target);if(!lines.length)throw Error('Não há saldos de resultado a encerrar.');const entry={id:uid(),number:Math.max(0,...c.entries.map(e=>e.number))+1,date,reference:'ENC-'+y,memo:`Encerramento do resultado — exercício ${y}`,lines,closing:true,year:y,target,stale:false};validateEntry(entry,c);mutate((_,co)=>co.entries.push(entry));finishDialog();toast('Encerramento gerado.');});};}
-function recalc(){if(!confirm('Reconstruir todos os lançamentos de encerramento, em ordem cronológica? Edições manuais dessas partidas serão substituídas.'))return;safe(()=>{mutate((_,c)=>{const closes=c.entries.filter(e=>e.closing).sort((a,b)=>a.date.localeCompare(b.date));c.entries=c.entries.filter(e=>!e.closing);for(const e of closes){e.lines=closeLines(c,e.date,e.target);e.stale=false;if(e.lines.length){validateEntry(e,c);c.entries.push(e);}}});toast('Encerramentos recalculados. Encerramentos sem saldo foram removidos.');});}
+if(a)document.querySelector('#deleteAccount').onclick=()=>safe(async()=>{if(used)throw Error('Não é possível excluir uma conta com lançamentos.');if(c.accounts.some(b=>b.code.startsWith(a.code+'.')))throw Error('Remova primeiro as subcontas.');if(!confirm('Excluir esta conta?'))return;await mutate((_,co)=>co.accounts=co.accounts.filter(b=>b.id!==id));finishDialog();});
+document.querySelector('#dialogForm').onsubmit=e=>{e.preventDefault();safe(async()=>{const f=new FormData(e.target),n={id:a?.id||uid(),code:f.get('code').trim(),name:f.get('name').trim(),kind:f.get('kind'),postable:f.get('postable')==='true',normal:f.get('normal')};if(!n.name||!/^\d+(\.\d+)*$/.test(n.code))throw Error('Informe código e nome válidos.');if(c.accounts.some(b=>b.id!==id&&b.code===n.code))throw Error('Já existe uma conta com esse código.');if(used&&(n.code!==a.code||n.kind!==a.kind||!n.postable))throw Error('Conta com lançamentos: código, grupo e tipo analítico não podem ser alterados.');if(a&&c.accounts.some(b=>b.code.startsWith(a.code+'.'))&&n.code!==a.code)throw Error('O código de uma conta com subcontas não pode ser alterado.');await mutate((_,co)=>{const i=co.accounts.findIndex(b=>b.id===id);if(i<0)co.accounts.push(n);else co.accounts[i]=n;});finishDialog();toast('Plano de contas atualizado.');});};}
+function closingDialog(){const year=Number(to.slice(0,4)),c=company();openDialog('Encerrar resultado do exercício',`<div class="notice">A rotina zera os saldos de receitas e despesas até 31/12 e transfere o resultado para uma conta do patrimônio líquido. A DRE ignora as partidas de encerramento. Não é necessário usar uma conta transitória de apuração.</div><div class="grid"><label>Exercício<input type="number" min="1900" max="9999" name="year" value="${year}" required></label><label>Conta de destino do resultado<select name="target" required>${accountOptions(c.accounts.find(a=>a.kind==='equity'&&a.name==='Lucros ou prejuízos acumulados')?.id,a=>a.kind==='equity')}</select></label></div><p class="muted">Encerre os exercícios em ordem. Se houver alteração posterior dos lançamentos, o sistema sinaliza os encerramentos afetados; recalcule-os para atualizar os saldos.</p>`,`<button class="primary">Gerar encerramento</button>`);document.querySelector('#dialogForm').onsubmit=e=>{e.preventDefault();safe(async()=>{const f=new FormData(e.target),y=Number(f.get('year')),target=f.get('target'),date=`${y}-12-31`;if(!validDate(date))throw Error('Exercício inválido.');if(c.entries.some(e=>e.closing&&e.year===y))throw Error('Esse exercício já possui encerramento. Use Recalcular encerramentos.');if(c.entries.some(e=>e.closing&&e.year>y))throw Error('Exclua os encerramentos posteriores ou recalcule-os após encerrar este exercício.');if(!c.accounts.some(a=>a.id===target&&a.kind==='equity'&&a.postable))throw Error('Escolha uma conta analítica do patrimônio líquido.');const lines=closeLines(c,date,target);if(!lines.length)throw Error('Não há saldos de resultado a encerrar.');const entry={id:uid(),number:Math.max(0,...c.entries.map(e=>e.number))+1,date,reference:'ENC-'+y,memo:`Encerramento do resultado — exercício ${y}`,lines,closing:true,year:y,target,stale:false};validateEntry(entry,c);await mutate((_,co)=>co.entries.push(entry));finishDialog();toast('Encerramento gerado.');});};}
+async function recalc(){if(!confirm('Reconstruir todos os lançamentos de encerramento, em ordem cronológica? Edições manuais dessas partidas serão substituídas.'))return;return safe(async()=>{await mutate((_,c)=>{const closes=c.entries.filter(e=>e.closing).sort((a,b)=>a.date.localeCompare(b.date));c.entries=c.entries.filter(e=>!e.closing);for(const e of closes){e.lines=closeLines(c,e.date,e.target);e.stale=false;if(e.lines.length){validateEntry(e,c);c.entries.push(e);}}});toast('Encerramentos recalculados. Encerramentos sem saldo foram removidos.');});}
 const tabs=[['entries','Lançamentos'],['accounts','Plano de contas'],['trial','Balancete'],['ledger','Razão'],['journal','Diário'],['balance','Balanço'],['income','DRE'],['settings','Dados e empresas']];
 function table(headers,rows,cls=''){return `<div class="table-wrap"><table class="${cls}"><thead><tr>${headers.map((h,i)=>`<th class="${i&&/Saldo|Débito|Crédito|Valor|Movimento|Anterior|Atual/.test(h)?'num':''}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows||`<tr><td colspan="${headers.length}" class="empty">Nenhum dado para este filtro.</td></tr>`}</tbody></table></div>`;}
 const debitCredit=n=>n===0?'—':`${money(Math.abs(n))} ${n>0?'D':'C'}`;
@@ -249,19 +393,22 @@ function renderJournal(c){exportRows=[['Data','Lançamento','Histórico','Docume
 function aggregateRows(c,mv,kind){const as=c.accounts.filter(a=>a.kind===kind).sort(compare);return as.map(a=>{const ids=a.postable?[a.id]:c.accounts.filter(b=>b.postable&&b.code.startsWith(a.code+'.')).map(b=>b.id);const n=natural(a,sum(ids.map(id=>raw(mv[id]))));exportRows.push([a.code,a.name,a.postable?'Analítica':'Sintética',dec(n)]);return `<tr class="${a.postable?'':'section-row'}"><td>${tint(a.kind,a.code)}</td><td style="padding-left:${10+Math.min(5,a.code.split('.').length-1)*12}px">${a.postable?`<button class="link" style="color:${kindColors[a.kind]}" data-ledger="${esc(a.id)}">${esc(a.name)}</button>`:accountName(a)}</td><td class="num ${n<0?'bad':''}">${money(n)}</td></tr>`;}).join('');}
 function renderBalance(c){const mv=movements(c,'',to);const total=k=>sum(c.accounts.filter(a=>a.postable&&a.kind===k).map(a=>natural(a,raw(mv[a.id]))));const asset=total('asset'),liab=total('liability'),equity=total('equity'),result=sum([total('revenue'),-total('expense')]);const other=sum([liab,equity,result]);exportRows=[['Código','Conta','Tipo','Valor']];let rows='';for(const k of ['asset','liability','equity']){rows+=`<tr class="total"><td colspan="2">${tint(k,kinds[k])}</td><td class="num">${money(total(k))}</td></tr>`;rows+=aggregateRows(c,mv,k);}rows+=`<tr><td></td><td>Resultado ainda não transferido ao patrimônio líquido</td><td class="num">${money(result)}</td></tr><tr class="total"><td colspan="2">Total do ativo</td><td class="num">${money(asset)}</td></tr><tr class="total"><td colspan="2">Total do passivo + patrimônio líquido + resultado</td><td class="num">${money(other)}</td></tr>`;exportRows.push(['','Resultado não transferido','',dec(result)],['','Total do ativo','',dec(asset)],['','Total passivo + PL + resultado','',dec(other)]);return `<div class="notice">Posição acumulada até ${fmtDate(to)}. O campo “De” não limita os saldos do balanço. Contas sintéticas são subtotais; não devem ser somadas novamente. Resultado pendente de encerramento é apresentado separadamente. Clique nas contas analíticas para consultar o razão acumulado.</div><div class="card">${table(['Código','Conta','Valor'],rows)}<p class="${asset===other?'good':'bad'}">${asset===other?'✓ Balanço equilibrado.':'Balanço com diferença: '+money(asset-other)}</p></div>`;}
 function renderIncome(c){const mv=movements(c,from,to,true);const revenue=sum(c.accounts.filter(a=>a.postable&&a.kind==='revenue').map(a=>-raw(mv[a.id]))),expense=sum(c.accounts.filter(a=>a.postable&&a.kind==='expense').map(a=>raw(mv[a.id]))),result=sum([revenue,-expense]);exportRows=[['Código','Conta','Tipo','Valor']];let rows=aggregateRows(c,mv,'revenue');rows+=`<tr class="total"><td colspan="2">Total de receitas, líquido das deduções</td><td class="num">${money(revenue)}</td></tr>`;rows+=aggregateRows(c,mv,'expense');rows+=`<tr class="total"><td colspan="2">Total de despesas e custos</td><td class="num">${money(expense)}</td></tr><tr class="total"><td colspan="2">${result>=0?'Lucro':'Prejuízo'} do período</td><td class="num ${result<0?'bad':'good'}">${money(result)}</td></tr>`;exportRows.push(['','Total de receitas','',dec(revenue)],['','Total de despesas e custos','',dec(expense)],['','Resultado do período','',dec(result)]);return `<div class="notice">DRE básica por grupo de contas: receitas menos custos e despesas. Partidas marcadas como encerramento são excluídas. Saldos negativos nas receitas representam deduções ou ajustes. Clique em uma conta para examinar suas partidas no razão.</div><div class="card">${table(['Código','Conta','Valor'],rows)}</div>`;}
-function renderSettings(c){return `<div class="grid"><div class="card"><h2>Backup e restauração</h2><p>O backup inclui todas as empresas, contas e lançamentos. A restauração substitui todos os dados deste navegador após confirmação.</p><div class="inline"><button class="primary" data-action="backup">Exportar backup JSON</button>${localStorage.getItem(KEY+'.antes-plano-v2')?'<button data-action="legacy-backup">Backup anterior à atualização</button>':''}<button data-action="restore">Restaurar backup JSON</button></div><p class="muted">O navegador não sincroniza dados entre computadores, perfis, navegadores ou cópias do HTML. No modo privado, os dados podem ser apagados ao fechar a janela. Mantenha o HTML no mesmo local e faça backup antes de movê-lo.</p></div><div class="card"><h2>Empresa atual</h2><p><strong>${esc(c.name)}</strong><br>${esc(c.document||'Sem CNPJ informado')}</p><div class="inline"><button data-action="edit-company">Editar cadastro</button><button class="danger" data-action="delete-company">Excluir empresa</button></div><p class="muted">${c.accounts.length} contas · ${c.entries.length} lançamentos</p></div></div><div class="card"><h2>Encerramento do resultado</h2><p>Gere um lançamento automático em 31/12 para zerar receitas e despesas e transferir o resultado ao patrimônio líquido. Se alterar partidas anteriores, recalcule os encerramentos afetados. O encerramento não bloqueia a edição dos lançamentos.</p><div class="inline"><button data-action="closing">Encerrar exercício</button><button data-action="recalc" ${c.entries.some(e=>e.closing)?'':'disabled'}>Recalcular encerramentos</button></div></div><div class="notice">Ferramenta básica para escrituração e relatórios gerenciais contábeis. Não gera obrigações fiscais, SPED, autenticação de livros ou demonstrativos regulatórios completos. Não há conexão com serviços externos.</div>`;}
-function restore(){const input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.onchange=async()=>{try{const file=input.files[0];if(!file)return;if(file.size>30*1024*1024)throw Error('Arquivo muito grande. Limite: 30 MB.');const next=migrateDB(JSON.parse(await file.text()));if(!confirm(`Restaurar ${next.companies.length} empresa(s)? Todos os dados atuais serão substituídos. Faça backup antes de continuar.`))return;commit(next,true);entryDrafts.clear();accountFilter='';search='';render();toast('Backup restaurado e validado.');}catch(e){showError('Restauração não realizada: '+e.message);}};input.click();}
+function renderSettings(c){return `<div class="grid"><div class="card"><h2>Backup e restauração</h2><p>O backup inclui todas as empresas, contas e lançamentos. A restauração substitui todos os dados deste navegador após confirmação.</p><div class="inline"><button class="primary" data-action="backup">Exportar backup JSON</button>${legacyArchives.includes('before-plan')?'<button data-action="legacy-backup">Backup anterior à atualização</button>':''}${legacyArchives.includes('before-indexeddb')?'<button data-action="migration-backup">Backup anterior à migração</button>':''}<button data-action="restore">Restaurar backup JSON</button></div><p class="muted">O navegador não sincroniza dados entre computadores, perfis, navegadores ou cópias do HTML. No modo privado, os dados podem ser apagados ao fechar a janela. Mantenha o HTML no mesmo local e faça backup antes de movê-lo.</p></div><div class="card"><h2>Empresa atual</h2><p><strong>${esc(c.name)}</strong><br>${esc(c.document||'Sem CNPJ informado')}</p><div class="inline"><button data-action="edit-company">Editar cadastro</button><button class="danger" data-action="delete-company">Excluir empresa</button></div><p class="muted">${c.accounts.length} contas · ${c.entries.length} lançamentos</p></div></div><div class="card"><h2>Encerramento do resultado</h2><p>Gere um lançamento automático em 31/12 para zerar receitas e despesas e transferir o resultado ao patrimônio líquido. Se alterar partidas anteriores, recalcule os encerramentos afetados. O encerramento não bloqueia a edição dos lançamentos.</p><div class="inline"><button data-action="closing">Encerrar exercício</button><button data-action="recalc" ${c.entries.some(e=>e.closing)?'':'disabled'}>Recalcular encerramentos</button></div></div><div class="notice">Ferramenta básica para escrituração e relatórios gerenciais contábeis. Não gera obrigações fiscais, SPED, autenticação de livros ou demonstrativos regulatórios completos. Não há conexão com serviços externos.</div>`;}
+function restore(){const input=document.createElement('input');input.type='file';input.accept='.json,application/json';input.onchange=async()=>{try{const file=input.files[0];if(!file)return;if(file.size>256*1024*1024)throw Error('Arquivo muito grande. Limite: 256 MiB.');const next=migrateDB(JSON.parse(await file.text()));if(!confirm(`Restaurar ${next.companies.length} empresa(s)? Todos os dados atuais serão substituídos. Faça backup antes de continuar.`))return;if(storageBusy)throw Error('Aguarde a gravação atual terminar.');setStorageBusy(true);try{await commit(next,true);entryDrafts.clear();accountFilter='';search='';render();toast('Backup restaurado e validado.');}finally{setStorageBusy(false);}}catch(e){showError('Restauração não realizada: '+storageError(e));}};input.click();}
 function csv(){if(!exportRows.length){toast('Não há relatório para exportar.');return;}const cell=v=>{let s=String(v??'');if((/^\s*[=+\-@]/.test(s)||/^[\t\r\n]/.test(s))&&!/^-\d+(?:\.\d{3})*,\d{2}$/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};download(`fly-${tab}-${today()}.csv`,'\uFEFF'+exportRows.map(r=>r.map(cell).join(';')).join('\r\n'),'text/csv;charset=utf-8');}
 function applyPeriod(){const f=document.querySelector('#from').value,t=document.querySelector('#to').value;if(!validDate(f)||!validDate(t)||f>t)throw Error('Informe um período válido: a data inicial deve ser anterior ou igual à final.');from=f;to=t;render();}
-function bindMain(){document.querySelector('#main').onclick=e=>{const b=e.target.closest('[data-action],[data-entry],[data-edit],button[data-account],[data-ledger],[data-duplicate]');if(!b)return;safe(()=>{if(b.dataset.duplicate){duplicateEntry(b.dataset.duplicate);return;}if(b.dataset.edit||b.dataset.entry){entryDialog(b.dataset.edit||b.dataset.entry);return;}if(b.matches('button[data-account]')){if(tab==='accounts')accountDialog(b.dataset.account);return;}if(b.dataset.ledger){accountFilter=b.dataset.ledger;if(tab==='balance')from='1900-01-01';tab='ledger';render();return;}switch(b.dataset.action){case'new-company':companyDialog();break;case'new-entry':entryDialog();break;case'new-account':accountDialog();break;case'edit-company':companyDialog(true);break;case'closing':closingDialog();break;case'recalc':recalc();break;case'backup':backup();break;case'legacy-backup':download('fly-antes-plano-v2.json',localStorage.getItem(KEY+'.antes-plano-v2'),'application/json');break;case'restore':restore();break;case'csv':csv();break;case'toggle-synthetic':showSynthetic=!showSynthetic;render();break;case'apply':applyPeriod();break;case'search':search=document.querySelector('#search').value;render();break;case'delete-company':if(confirm(`Excluir a empresa ${company().name} e todos os seus dados? Esta ação é permanente.`)){mutate((next,c)=>{next.companies=next.companies.filter(x=>x.id!==c.id);next.active=next.companies[0]?.id||null;});accountFilter='';}break;}});};const sel=document.querySelector('#ledgerAccount');if(sel)sel.onchange=e=>{accountFilter=e.target.value;render();};const s=document.querySelector('#search');if(s)s.onkeydown=e=>{if(e.key==='Enter'){search=s.value;render();}};}
+function bindMain(){document.querySelector('#main').onclick=e=>{const b=e.target.closest('[data-action],[data-entry],[data-edit],button[data-account],[data-ledger],[data-duplicate]');if(!b)return;safe(async()=>{if(b.dataset.duplicate){duplicateEntry(b.dataset.duplicate);return;}if(b.dataset.edit||b.dataset.entry){entryDialog(b.dataset.edit||b.dataset.entry);return;}if(b.matches('button[data-account]')){if(tab==='accounts')accountDialog(b.dataset.account);return;}if(b.dataset.ledger){accountFilter=b.dataset.ledger;if(tab==='balance')from='1900-01-01';tab='ledger';render();return;}switch(b.dataset.action){case'new-company':companyDialog();break;case'new-entry':entryDialog();break;case'new-account':accountDialog();break;case'edit-company':companyDialog(true);break;case'closing':closingDialog();break;case'recalc':await recalc();break;case'backup':await backup();break;case'legacy-backup':await archiveBackup('before-plan');break;case'migration-backup':await archiveBackup('before-indexeddb');break;case'restore':restore();break;case'csv':csv();break;case'toggle-synthetic':showSynthetic=!showSynthetic;render();break;case'apply':applyPeriod();break;case'search':search=document.querySelector('#search').value;render();break;case'delete-company':if(confirm(`Excluir a empresa ${company().name} e todos os seus dados? Esta ação é permanente.`)){await mutate((next,c)=>{next.companies=next.companies.filter(x=>x.id!==c.id);next.active=next.companies[0]?.id||null;});accountFilter='';}break;}});};const sel=document.querySelector('#ledgerAccount');if(sel)sel.onchange=e=>{accountFilter=e.target.value;render();};const s=document.querySelector('#search');if(s)s.onkeydown=e=>{if(e.key==='Enter'){search=s.value;render();}};}
 document.querySelector('#nav').onclick=e=>{const b=e.target.closest('[data-tab]');if(b){tab=b.dataset.tab;render();}};
-document.querySelector('#companySelect').onchange=e=>safe(()=>{const id=e.target.value;mutate(next=>next.active=id);accountFilter='';search='';render();});
+document.querySelector('#companySelect').onchange=e=>safe(async()=>{const id=e.target.value;await mutate(next=>next.active=id);accountFilter='';search='';render();});
 document.querySelector('#newCompany').onclick=()=>companyDialog();document.querySelector('#backupTop').onclick=()=>safe(backup);
 document.querySelector('#dialog').onclick=e=>{if(e.target.closest('[data-action="dismiss"]'))dismiss();};document.querySelector('#dialog').addEventListener('cancel',e=>{e.preventDefault();dismiss();});
-window.addEventListener('storage',e=>{if(e.key===KEY){loadError='Os dados foram alterados em outra aba. Recarregue esta página antes de continuar para evitar sobrescrever alterações.';document.querySelectorAll('button').forEach(b=>b.disabled=true);const p=document.querySelector('#pageError');if(p){p.hidden=false;p.textContent=loadError;}}});
+window.addEventListener('storage',e=>{if(e.key===KEY)markStorageStale('Os dados da versão antiga foram alterados em outra aba. Recarregue o Fly e confira qual versão está utilizando antes de continuar.');});
+window.addEventListener('beforeunload',e=>{if(storageBusy){e.preventDefault();e.returnValue='';}});
+// Block pending UI actions without changing the style of thousands of report/list rows.
+for(const type of ['click','keydown','beforeinput','change','submit'])document.addEventListener(type,e=>{if(storageBusy){e.preventDefault();e.stopImmediatePropagation();}},true);
 document.querySelector('#appVersion').textContent='v'+APP_VERSION;
 document.title=`Fly v${APP_VERSION} • Contabilidade local`;
-render();
+boot();
 </script>
 </body>
 </html>
