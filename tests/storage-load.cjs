@@ -1,4 +1,4 @@
-// Real IndexedDB load test: two companies, two years, 20,000 entries per company/year.
+// Real IndexedDB and paginated list load test: two companies, two years, 20,000 entries per company/year.
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
@@ -23,10 +23,10 @@ const {performance}=require('node:perf_hooks');
    let start=performance.now();await commit(next,true);const initialWriteMs=performance.now()-start;
    start=performance.now();const persisted=await storage.read();const readMs=performance.now()-start;
    for(const c of persisted.data.companies)if(c.entries.length!==40000)throw Error('Contagem de carga incorreta.');
-   from='2026-01-01';to='2026-12-31';start=performance.now();render();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));const fullListMs=performance.now()-start;
-   return {companies:2,yearsPerCompany:2,entriesPerCompanyPerYear:n,totalEntries:80000,compactMB:+(compactBytes/1e6).toFixed(2),initialWriteMs,readMs,fullListMs,displayedRows:document.querySelectorAll('.entries-list [data-entry]').length};
+   from='2026-01-01';to='2026-12-31';start=performance.now();render();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));const pagedListMs=performance.now()-start;
+   const displayedRows=document.querySelectorAll('.entries-list [data-entry]').length;getEntryView().applied=compileEntryFilters({join:'AND',conditions:[{field:'history',op:'contains',value:'serviços'}]});start=performance.now();render();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));const filteredListMs=performance.now()-start,filteredRows=document.querySelectorAll('.entries-list [data-entry]').length;getEntryView().applied={join:'AND',conditions:[]};render();return {filteredListMs,filteredRows,companies:2,yearsPerCompany:2,entriesPerCompanyPerYear:n,totalEntries:80000,compactMB:+(compactBytes/1e6).toFixed(2),initialWriteMs,readMs,pagedListMs,displayedRows};
   });
-  assert.equal(metrics.displayedRows,20000);assert.ok(metrics.compactMB>5);
+  assert.equal(metrics.displayedRows,20);assert.equal(metrics.filteredRows,500);assert.ok(metrics.compactMB>5);
   const edit=await page.evaluate(async()=>{
    const counts={},originalPut=IDBObjectStore.prototype.put,originalWrite=storage.write;let storageMs=0;
    IDBObjectStore.prototype.put=function(...args){counts[this.name]=(counts[this.name]||0)+1;return originalPut.apply(this,args);};

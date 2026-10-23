@@ -1,6 +1,6 @@
 # Fly — Contabilidade local
 
-Versão atual: **1.3.1**, identificada no cabeçalho e no título da janela.
+Versão atual: **1.4.0**, identificada no cabeçalho e no título da janela.
 
 Aplicativo básico para escrituração contábil por um contador, em um único HTML, sem servidor, bibliotecas externas, login ou conexão com a internet.
 
@@ -45,11 +45,29 @@ Use **Duplicar** na linha de um lançamento ou na sua edição (inclusive quando
 
 A cópia só é gravada após a confirmação, recebe novo identificador e número e não altera o lançamento de origem. Se cancelar a confirmação, o formulário permanece disponível para revisão. Havendo alterações não salvas no formulário atual, o programa pede confirmação antes de substituí-las pela cópia do lançamento salvo. Encerramentos automáticos devem ser gerados pela rotina própria e não têm ação de duplicação.
 
+## Padrões por empresa
+
+A aba **Padrões** reúne **Históricos padrão** (código e texto) e **Lançamentos padrão** (código, nome, conta de débito, conta de crédito e histórico padrão). Os códigos são exclusivos dentro de cada cadastro da empresa e podem conter letras, números, ponto, hífen e sublinhado, com até 40 caracteres. Maiúsculas e minúsculas são equivalentes.
+
+Na tela de lançamentos, informe o **Código do histórico padrão** e pressione Enter ou **Usar** para copiar seu texto ao histórico editável. Para preparar as contas e o histórico de uma vez, informe o **Código do lançamento padrão** e pressione Enter ou **Usar padrão**; também pode usar a ação na aba Padrões. Preencha a data e o campo único de valor: ele alimenta o débito e o crédito. O lançamento só é gravado ao salvar. É possível complementar os dados; ao adicionar/remover partidas, o atalho de valor único é retirado.
+
+Alterar ou excluir um padrão não reescreve os lançamentos já salvos. Um histórico usado por um lançamento padrão e uma conta usada em um padrão precisam ser desvinculados antes da exclusão. Os dois cadastros são locais, separados por empresa e incluídos no backup JSON. Backups antigos continuam aceitos.
+
+## Paginação e filtros de lançamentos
+
+Sem filtros de histórico/valor aplicados, a lista exibe os **20 lançamentos mais recentes por página**, ordenados por data e número decrescentes. O intervalo de datas, sozinho, mantém esse limite. Com condições aplicadas, cada página mostra **até 500 lançamentos**; os controles de paginação dão acesso a todos os resultados.
+
+Abra **Filtros**, adicione condições e escolha **E** (todas) ou **OU** (qualquer). O histórico permite contém/não contém, igualdade/diferença e começo/fim do texto, ignorando acentos e caixa. O valor permite igualdade/diferença, maior/menor, limites inclusivos e intervalo inclusivo. O valor considerado é o total dos débitos do lançamento, sem somar novamente seus créditos.
+
+As condições só entram em vigor ao clicar **Aplicar filtros**. Alterações incompletas ou inválidas preservam a consulta anterior e mostram uma mensagem no painel. **Limpar filtros** volta a 20 por página, preservando o período. A contagem e o valor no rodapé correspondem a todos os resultados, não apenas à página visível. Nenhum resultado gera apenas um aviso discreto na tabela, sem confirmação. Páginas e filtros são mantidos por empresa durante a sessão; os rascunhos do lançamento são preservados ao consultar.
+
 ## Contas sintéticas no balancete
 
 No **Balancete**, o botão **Mostrar contas sintéticas / Esconder contas sintéticas** alterna entre somente analíticas e a hierarquia completa. Cada sintética totaliza as contas analíticas descendentes, incluindo seus saldos anteriores e movimentos do período. O grupo `2` inclui tanto passivo quanto patrimônio líquido. O total geral soma apenas as analíticas e permanece igual ao alternar a exibição.
 
-A exportação CSV segue a opção exibida e identifica o tipo de cada conta. A escolha é mantida enquanto o programa permanece aberto. A consulta ao razão continua disponível pelos nomes das contas analíticas.
+Clique na própria linha de uma sintética para recolher/expandir suas subcontas, também no **Balanço** e na **DRE**. Enter ou Espaço têm a mesma função quando a linha está em foco. Cada relatório mantém seus grupos por empresa durante a sessão. No balancete, o recolhimento só atua quando as sintéticas estão visíveis; a opção de somente analíticas mostra todas as analíticas. Subtotais e totais não mudam ao recolher.
+
+A exportação CSV mantém os detalhes mesmo quando grupos estão recolhidos; no balancete, segue a opção de incluir ou não sintéticas e identifica o tipo de cada conta. A escolha é mantida enquanto o programa permanece aberto. A consulta ao razão continua disponível pelos nomes das contas analíticas.
 
 ## Encerrar o resultado
 
@@ -103,8 +121,20 @@ Em outro terminal:
 node tests/browser.cjs
 node tests/workbench.cjs
 node tests/version-1.2.cjs
+node tests/pending-features.cjs
 node tests/storage.cjs
 node tests/storage-load.cjs
 ```
 
 Se Playwright estiver instalado fora do projeto, informe seu diretório de módulos em `NODE_PATH`. `FLY_TEST_URL` permite mudar o endereço usado no teste. Os testes abrem perfis isolados e verificam criação, edição e exclusão, relatórios, encerramento/recálculo, persistência, separação de empresas, backup/restauração, exportação CSV, gravação sem rede e falha de armazenamento. A suíte `workbench.cjs` também verifica migração de dados antigos, preservação de rascunhos, cores, sugestões clicáveis e por teclado, contrapartidas e Documento condicional, além do encaixe em 1366×768 e 1280×720. A suíte `version-1.2.cjs` verifica o clique em contas selecionadas, a duplicação com confirmação da data, a identificação da versão e o balancete sintético, inclusive seu CSV e a preservação dos totais. As suítes `storage.cjs` e `storage-load.cjs` usam IndexedDB real e verificam transações, migração, recuperação, reinício do navegador e carga de 80 mil lançamentos. O servidor é usado apenas na validação automatizada, não faz parte do aplicativo. A política do Chromium deste ambiente bloqueia navegação direta a `file://`; por isso essa modalidade de abertura não foi validada aqui.
+
+## Propostas reservadas para definição das regras
+
+A versão 1.4.0 não implementa as propostas abaixo. Elas permanecem registradas para uma próxima rodada:
+
+- **Demonstrações**: aba entre DRE e Dados e empresas, com balanço lado a lado (ativo à esquerda, passivo e PL à direita), DRE, DMPL, DFC indireta, índices e notas explicativas; apresentação própria para futura impressão. Antes de implementar a DFC, confirmar classificação das contas, ajustes sem efeito de caixa, variações operacionais e reconciliação de disponíveis. Definir também os movimentos complementares da DMPL e como manter a coerência com a contabilidade.
+- **Simples Nacional**: calculadora com anexos CGSN, RBT12 e fator R, incluindo folha/pró-labore, e seleção da empresa para sugerir faturamentos anteriores. Confirmar as regras de alimentação contábil e segregação das receitas, tratamento de empresas em início de atividade, período de apuração e componentes do fator R antes de automatizar valores.
+- **Matriz e filiais**: estabelecimentos com lançamentos e encerramentos próprios e relatórios consolidados. Confirmar plano compartilhado, identificação dos estabelecimentos, operações entre eles e alcance da consolidação.
+- **XML de NFS-e**: a viabilidade foi discutida, mas a implementação ainda não foi confirmada. A proposta é um registro fiscal separado da contabilidade, com seleção local de arquivos/pasta, sem serviço online. Definir leiaute, campos, duplicidades, cancelamentos e competência antes de importar.
+
+A importação de lançamentos por planilha continua fora do escopo conforme solicitado.
