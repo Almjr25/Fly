@@ -18,6 +18,30 @@ body.entries-view{height:100dvh;display:flex;flex-direction:column;overflow:hidd
 body.entries-view main{overflow:auto}.entries-workspace{grid-template-rows:auto minmax(140px,1fr)}.entries-view .report-title>div{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}.entries-view .report-heading{margin-bottom:0}.entries-view .report-title{margin-bottom:8px}.entries-view>.footer{padding:5px 8px}
 
 .brand .version-badge{display:inline-block;margin-left:8px;padding:2px 5px;border:1px solid #62748d;border-radius:4px;font-size:10px;letter-spacing:0;color:#d3dff0;vertical-align:middle}.copy-notice{padding:5px 8px;font-size:11px}.entry-editor .entry-controls{flex-wrap:wrap}.entry-editor .entry-controls>button{flex-shrink:0}
+
+/* Softer light surfaces for prolonged reading; accounting group colors remain semantic. */
+:root{color:#354253;background:#e2e7ed;--line:#cdd6e1}
+nav,.card,dialog,.account-suggestions{background:#f0f3f6}
+button{background:#f2f4f7;color:#354253}
+button:hover{background:#e7edf5}
+.primary{background:var(--blue);color:white}
+.primary:hover{background:#184bb9}
+.danger{color:#af2534}
+input,select,textarea{background:#f8fafb;border-color:#bdc9d7;color:#354253}
+.header-actions select{color:#354253}
+th{background:#e2e8f0;color:#4b5b70}
+td,th{border-bottom-color:#d9e1e9}
+tbody>tr:nth-child(odd){background:#f6f7f9}
+tbody>tr:nth-child(even){background:#edf1f5}
+tbody>tr.section-row,tbody>tr.total{background:#edf1f5}
+tr.total{border-top:1px solid #c4cfdd}
+tr[data-entry]:hover{background:#edf2fa;box-shadow:inset 3px 0 #9bb3d7}
+.link,nav button{background:transparent}
+.link:hover{background:transparent}
+.dialog-foot{background:#e9eef4}
+.muted,.empty,.no-suggestions{color:#56677c}
+.footer{color:#586a80}
+.account-suggestion:hover,.account-suggestion[aria-selected="true"]{background:#edf2fa}
 </style>
 </head>
 <body>
@@ -28,7 +52,7 @@ body.entries-view main{overflow:auto}.entries-workspace{grid-template-rows:auto 
 <script>
 'use strict';
 const KEY='fly.contabilidade.v1';
-const APP_VERSION='1.3.0';
+const APP_VERSION='1.3.1';
 const money=n=>((n||0)/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const dec=n=>((n||0)/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -38,7 +62,7 @@ const fmtDate=s=>s.split('-').reverse().join('/');
 const validDate=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&s.slice(0,4)>='1900'&&s.slice(0,4)<='9999'&&!isNaN(Date.parse(s))&&new Date(s).toISOString().slice(0,10)===s;
 function cents(s){s=String(s).trim();if(!s)return 0;if(!/^\d+(?:\.\d{3})*(?:,\d{1,2})?$/.test(s))throw Error('Use valores como 1.234,56, sem sinal ou símbolo de moeda.');const parts=s.replace(/\./g,'').split(',');const v=Number(parts[0])*100+Number((parts[1]||'').padEnd(2,'0'));if(!Number.isSafeInteger(v)||v>1e14)throw Error('Valor fora do limite permitido.');return v;}
 const kinds={asset:'Ativo',funding:'Passivo e PL',liability:'Passivo',equity:'Patrimônio líquido',revenue:'Receitas',expense:'Despesas'};
-const kindColors={asset:'#245FA5',funding:'#B65B22',liability:'#B65B22',equity:'#79509C',revenue:'#247A46',expense:'#BB3944'};
+const kindColors={asset:'#245FA5',funding:'#B65B22',liability:'#B65B22',equity:'#8A6818',revenue:'#247A46',expense:'#BB3944'};
 const tint=(kind,text)=>`<span style="color:${kindColors[kind]}">${esc(text)}</span>`;
 const accountName=a=>a.kind==='funding'?`${tint('liability','Passivo')} e ${tint('equity','Patrimônio líquido')}`:tint(a.kind,a.name);
 const normalizeQuery=s=>s.replace(/[—–]/g,' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');

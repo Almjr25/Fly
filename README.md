@@ -1,8 +1,10 @@
 # Fly — Contabilidade local
 
-Versão atual: **1.3.0**, identificada no cabeçalho e no título da janela.
+Versão atual: **1.3.1**, identificada no cabeçalho e no título da janela.
 
 Aplicativo básico para escrituração contábil por um contador, em um único HTML, sem servidor, bibliotecas externas, login ou conexão com a internet.
+
+A interface usa superfícies em cinza azulado, linhas alternadas suaves e texto em grafite para leitura prolongada, mantendo o tema claro. O patrimônio líquido é identificado por dourado fechado.
 
 ## Usar
 
@@ -16,7 +18,7 @@ Não é necessário instalar Node, Python ou qualquer dependência para usar o H
 
 ## Plano de contas e pesquisa visual
 
-O plano inicial usa **1 — Ativo**, **2 — Passivo e patrimônio líquido**, **3 — Receitas** e **4 — Despesas e custos**. O passivo circulante fica em `2.1`, o não circulante em `2.2` e o patrimônio líquido em `2.3`. As fontes dos grupos usam azul `#245FA5`, cobre `#B65B22`, roxo `#79509C`, verde `#247A46` e vermelho `#BB3944`, respectivamente.
+O plano inicial usa **1 — Ativo**, **2 — Passivo e patrimônio líquido**, **3 — Receitas** e **4 — Despesas e custos**. O passivo circulante fica em `2.1`, o não circulante em `2.2` e o patrimônio líquido em `2.3`. As fontes dos grupos usam azul `#245FA5`, cobre `#B65B22`, dourado fechado `#8A6818`, verde `#247A46` e vermelho `#BB3944`, respectivamente.
 
 Ao atualizar uma instalação ou restaurar um backup da versão anterior, os códigos de PL, receitas e despesas são migrados, preservando IDs, lançamentos, saldos e destinos de encerramento. Se uma empresa já usa `2.3` para um ramo do passivo, o PL recebe o próximo ramo disponível. Na atualização dos dados locais, o sistema guarda uma cópia anterior à migração, disponível em **Dados e empresas → Backup anterior à atualização**. Backups antigos também podem ser restaurados diretamente.
 
@@ -61,7 +63,7 @@ A DRE básica apresenta receitas, deduções, despesas/custos e resultado. O bal
 
 Os dados são gravados em **IndexedDB**, um banco local nativo do navegador, em registros separados para empresas, contas e lançamentos. Cada alteração grava apenas os registros afetados, em uma transação: se a gravação falhar, os dados anteriores são mantidos. A tela só confirma sucesso após a transação terminar. Não há servidor ou transmissão dos dados.
 
-Ao abrir a versão 1.3.0 pela primeira vez, dados das versões anteriores presentes em `localStorage` são migrados automaticamente, preservando contas, lançamentos, números, saldos e encerramentos. A origem não é alterada nem apagada. Uma cópia anterior fica disponível em **Dados e empresas → Backup anterior à migração**; a cópia anterior à mudança do plano de contas, quando existente, também é preservada. Depois da migração, o IndexedDB é a fonte dos dados: o conteúdo antigo em `localStorage` não é atualizado. Não volte a usar um HTML anterior à 1.3.0, pois ele pode mostrar apenas os dados antigos.
+Ao abrir a versão 1.3.0 ou posterior pela primeira vez, dados das versões anteriores presentes em `localStorage` são migrados automaticamente, preservando contas, lançamentos, números, saldos e encerramentos. A origem não é alterada nem apagada. Uma cópia anterior fica disponível em **Dados e empresas → Backup anterior à migração**; a cópia anterior à mudança do plano de contas, quando existente, também é preservada. Depois da migração, o IndexedDB é a fonte dos dados: o conteúdo antigo em `localStorage` não é atualizado. Não volte a usar um HTML anterior à 1.3.0, pois ele pode mostrar apenas os dados antigos.
 
 Faça backup na versão antiga antes de substituir o HTML. Mantenha o mesmo nome e caminho. Navegadores tratam o armazenamento de arquivos locais de formas diferentes; se a nova cópia abrir sem encontrar sua empresa, use **Restaurar backup JSON**. O navegador deve permitir IndexedDB. Se ele estiver indisponível, o Fly informa a falha e não cria silenciosamente um banco vazio; dados antigos acessíveis podem ser exportados pelo botão de backup.
 
