@@ -1,6 +1,6 @@
 # Fly — Contabilidade local
 
-Versão atual: **1.4.0**, identificada no cabeçalho e no título da janela.
+Versão atual: **1.5.0**, identificada no cabeçalho e no título da janela.
 
 Aplicativo básico para escrituração contábil por um contador, em um único HTML, sem servidor, bibliotecas externas, login ou conexão com a internet.
 
@@ -69,6 +69,50 @@ Clique na própria linha de uma sintética para recolher/expandir suas subcontas
 
 A exportação CSV mantém os detalhes mesmo quando grupos estão recolhidos; no balancete, segue a opção de incluir ou não sintéticas e identifica o tipo de cada conta. A escolha é mantida enquanto o programa permanece aberto. A consulta ao razão continua disponível pelos nomes das contas analíticas.
 
+## Demonstrações
+
+A aba **Demonstrações**, entre DRE e Dados e empresas, contém balanço patrimonial, DRE, DMPL, DFC indireta, índices e notas explicativas. Os valores são calculados dos lançamentos atuais; não são guardadas cópias fechadas dos relatórios e não há edição de saldos neste módulo. Configurações, identificação, notas e movimentos complementares são locais, por empresa, e fazem parte do backup JSON.
+
+O balanço apresenta ativo à esquerda e passivo + PL à direita, com os totais gerais alinhados. Em cada lado, a coluna anterior fica à esquerda da atual. O comparativo sugere o mesmo intervalo do ano anterior, pode ser ajustado e é omitido quando não há dados até a posição anterior. A posição do balanço é acumulada até a data final; a DRE usa o movimento do período e exclui encerramentos. Resultado ainda não transferido é identificado separadamente e compõe o PL apresentado.
+
+### Classificação das contas
+
+Em **Classificar contas**, revise as sugestões do plano inicial. Cada conta pode indicar sua classificação na DFC e o conjunto usado nos índices. Uma conta sintética abrange suas analíticas descendentes; a classificação mais específica prevalece. Assim, selecionar uma sintética e uma subconta não duplica seus valores. O campo vazio herda a classificação do nível superior, quando houver.
+
+Na DFC, as opções são **Disponíveis**, **Operacional**, **Investimento** e **Financiamento**. Para índices, são **Ativo circulante**, **Realizável a longo prazo**, **Passivo circulante** e **Passivo não circulante**. Contas de imobilizado e intangível, por exemplo, não devem integrar o realizável a longo prazo. Os totais de ativo e passivo exigível vêm diretamente dos grupos patrimoniais.
+
+### DFC por variação dos saldos
+
+O método implementado segue a definição aprovada para o Fly: usa os saldos inicial e final das contas do balanço e o lucro/prejuízo líquido da DRE, sem investigar contrapartidas, pagamentos, juros separados ou movimentos sem caixa. Aumentos de ativos fora dos disponíveis reduzem o fluxo; aumentos de passivos e PL o elevam, conforme a atividade classificada. Cada variação é agrupada pela conta configurada.
+
+O resultado é apresentado uma única vez nas atividades operacionais. A variação do resultado ainda não transferido integra a variação do PL, e o resultado do período é retirado do bloco de financiamento para evitar dupla contagem. A conferência é **disponíveis finais − disponíveis iniciais − fluxo líquido = zero**, em centavos. Não há ajuste automático para fechar. Falta de classificação, falta de disponíveis ou diferença na conciliação mantém o relatório pendente de revisão. A classificação deve ser revisada e salva mesmo quando a sugestão inicial já atende ao plano.
+
+### DMPL
+
+Escolha as contas do PL que formarão as colunas, sem sobrepor sintéticas e descendentes. Há também uma coluna para resultado não transferido e uma coluna total. Escolha a coluna que recebe a transferência do resultado, normalmente lucros/prejuízos acumulados.
+
+Em **Movimentos da DMPL**, registre descrições e valores por coluna para aportes, distribuição de lucros e outras alterações. Valores positivos aumentam a coluna e negativos diminuem. Os movimentos são salvos por período e apenas explicam a variação: não mudam o balanço nem criam lançamentos. O relatório mostra abertura, resultado, transferência do resultado não transferido ao PL, movimentos informados, fechamento calculado, fechamento do balanço e diferença a explicar. Contas do PL com saldo fora das colunas selecionadas são sinalizadas.
+
+### Índices
+
+| Índice | Fórmula |
+| --- | --- |
+| Liquidez corrente | AC ÷ PC |
+| Liquidez geral | (AC + realizável a longo prazo) ÷ (PC + PNC) |
+| Solvência geral | Ativo total ÷ passivo exigível |
+| Endividamento | Passivo exigível ÷ ativo total × 100 |
+| Liquidez de recursos próprios | Passivo exigível ÷ ativo total |
+
+Passivo exigível exclui PL. A liquidez de recursos próprios usa o inverso da solvência geral, conforme a definição solicitada para este módulo; o endividamento apresenta o mesmo quociente em percentual. Os índices mostram quatro casas decimais e não fazem anualização. Divisão por zero aparece como **Não calculável**.
+
+### Identificação, notas e impressão
+
+Em **Identificação**, edite razão social, CNPJ, registro/NIRE, endereço, local/data e os dados do administrador/titular e do contador para as assinaturas. Esses campos são próprios das demonstrações; ainda não estão integrados ao cadastro geral da empresa. A data em branco usa a data final do período. O título de cada demonstração e o número da folha são salvos por período. O número da folha só aparece na impressão, no canto superior direito.
+
+As notas começam vazias. Use **Editar notas** para criar seções com títulos e parágrafos, numerados automaticamente como 1, 1.1, 1.2 etc. O conteúdo é texto, sem execução de HTML, e é salvo por empresa e período.
+
+**Imprimir / PDF** abre a impressão nativa do navegador para a demonstração selecionada, em apresentação branca, sem os controles do programa. Selecione “Salvar como PDF”, papel A4 e desative cabeçalhos/rodapés automáticos do navegador para não acrescentar URL e data. O Fly não calcula nem incrementa números de folha. A exportação CSV acompanha o relatório selecionado. Para guardar uma versão anterior a mudanças na escrituração, imprima ou exporte antes da alteração.
+
 ## Encerrar o resultado
 
 Use **Encerrar resultado**, informe o exercício e selecione uma conta analítica do patrimônio líquido (por padrão, Lucros ou prejuízos acumulados). É gerado um lançamento em 31/12 que zera os saldos de receitas e despesas até essa data e transfere a diferença ao patrimônio líquido. Encerre os exercícios em ordem.
@@ -97,7 +141,7 @@ Relatórios podem ser exportados em CSV separado por ponto e vírgula, com valor
 
 ## Escopo
 
-Uso individual e offline, sem integrações, SPED, folha, conciliação bancária, obrigações fiscais ou autenticação de livros. Os relatórios são básicos, sem notas explicativas nem formatação regulatória completa.
+Uso individual e offline, sem integrações, SPED, folha, conciliação bancária, obrigações fiscais ou autenticação de livros. Os relatórios seguem o escopo gerencial e as regras aprovadas para o Fly; a DFC usa o método por saldos descrito acima.
 
 ## Desenvolvimento e validação
 
@@ -122,6 +166,7 @@ node tests/browser.cjs
 node tests/workbench.cjs
 node tests/version-1.2.cjs
 node tests/pending-features.cjs
+node tests/statements.cjs
 node tests/storage.cjs
 node tests/storage-load.cjs
 ```
@@ -130,9 +175,9 @@ Se Playwright estiver instalado fora do projeto, informe seu diretório de módu
 
 ## Propostas reservadas para definição das regras
 
-A versão 1.4.0 não implementa as propostas abaixo. Elas permanecem registradas para uma próxima rodada:
+A versão 1.5.0 não implementa as propostas abaixo. Elas permanecem registradas para uma próxima rodada:
 
-- **Demonstrações**: aba entre DRE e Dados e empresas, com balanço lado a lado (ativo à esquerda, passivo e PL à direita), DRE, DMPL, DFC indireta, índices e notas explicativas; apresentação própria para futura impressão. Antes de implementar a DFC, confirmar classificação das contas, ajustes sem efeito de caixa, variações operacionais e reconciliação de disponíveis. Definir também os movimentos complementares da DMPL e como manter a coerência com a contabilidade.
+
 - **Simples Nacional**: calculadora com anexos CGSN, RBT12 e fator R, incluindo folha/pró-labore, e seleção da empresa para sugerir faturamentos anteriores. Confirmar as regras de alimentação contábil e segregação das receitas, tratamento de empresas em início de atividade, período de apuração e componentes do fator R antes de automatizar valores.
 - **Matriz e filiais**: estabelecimentos com lançamentos e encerramentos próprios e relatórios consolidados. Confirmar plano compartilhado, identificação dos estabelecimentos, operações entre eles e alcance da consolidação.
 - **XML de NFS-e**: a viabilidade foi discutida, mas a implementação ainda não foi confirmada. A proposta é um registro fiscal separado da contabilidade, com seleção local de arquivos/pasta, sem serviço online. Definir leiaute, campos, duplicidades, cancelamentos e competência antes de importar.
