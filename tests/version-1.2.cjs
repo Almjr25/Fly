@@ -20,7 +20,7 @@ const KEY='fly.contabilidade.v1';
   const nav=tab=>page.locator(`[data-tab="${tab}"]`).click();await page.waitForFunction(()=>!storageBusy);
   const source=(await co()).entries.find(e=>e.memo==='Receita');
   const field=()=>page.locator('#entryForm .account-query').first();
-  assert.equal(await page.locator('#appVersion').innerText(),'v1.5.0');assert.match(await page.title(),/v1\.5\.0/);
+  assert.equal(await page.locator('#appVersion').innerText(),'v1.5.1');assert.match(await page.title(),/v1\.5\.1/);
   // Selecting a field and clicking it again must never open the account registration dialog.
   await field().fill('1.1.02');await field().press('ArrowDown');await field().press('Enter');await field().click();await page.waitForFunction(()=>!storageBusy);
   assert.equal(await page.locator('#dialog').evaluate(d=>d.open),false);assert.equal(await field().getAttribute('data-selected-account'),(await co()).accounts.find(a=>a.code==='1.1.02').id);
@@ -53,6 +53,6 @@ const KEY='fly.contabilidade.v1';
   downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'Exportar CSV',exact:true}).click();await page.waitForFunction(()=>!storageBusy);csv=readFileSync(await(await downloaded).path(),'utf8');assert.doesNotMatch(csv,/"Sintética"/);
   // The report toggle respects the selected date window for opening balance and movements.
   await page.locator('#from').fill('2026-04-01');await page.locator('#to').fill('2026-04-30');await page.getByRole('button',{name:'Aplicar período',exact:true}).click();await page.waitForFunction(()=>!storageBusy);await page.getByRole('button',{name:'Mostrar contas sintéticas',exact:true}).click();await page.waitForFunction(()=>!storageBusy);const values=await page.locator(`[data-trial-account="${root.id}"] td`).allTextContents();assert.match(values[2],/1\.400,00 D/);assert.match(values[3],/500,00/);assert.match(values[5],/1\.900,00 D/);
-  assert.deepEqual(errors,[]);console.log('PASS: v1.5.0 visible; selected account stays editable without opening its registration; account editing only on chart; duplicate from list, editor and ledger; explicit date and confirmation/cancel; original unchanged; closing exclusion; synthetic toggle, hierarchy, date range, stable totals and matching CSV.');
+  assert.deepEqual(errors,[]);console.log('PASS: v1.5.1 visible; selected account stays editable without opening its registration; account editing only on chart; duplicate from list, editor and ledger; explicit date and confirmation/cancel; original unchanged; closing exclusion; synthetic toggle, hierarchy, date range, stable totals and matching CSV.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

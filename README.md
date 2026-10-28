@@ -1,6 +1,6 @@
 # Fly — Contabilidade local
 
-Versão atual: **1.5.0**, identificada no cabeçalho e no título da janela.
+Versão atual: **1.5.1**, identificada no cabeçalho e no título da janela.
 
 Aplicativo básico para escrituração contábil por um contador, em um único HTML, sem servidor, bibliotecas externas, login ou conexão com a internet.
 
@@ -15,6 +15,17 @@ A interface usa superfícies em cinza azulado, linhas alternadas suaves e texto 
 5. Exporte regularmente um **Backup JSON**. Para recuperar ou transferir dados, use **Dados e empresas → Restaurar backup JSON**.
 
 Não é necessário instalar Node, Python ou qualquer dependência para usar o HTML. Não há transmissão dos dados nem sincronização online. O cadastro começa vazio; as empresas utilizadas pelos testes não fazem parte do aplicativo.
+
+## Navegação lateral
+
+As telas ficam agrupadas na lateral esquerda:
+
+- **Contabilidade:** Lançamentos, Plano de contas e Padrões.
+- **Consultas:** Balancete, Razão, Diário, Balanço e DRE.
+- **Demonstrações:** conjunto de demonstrações para apresentação e impressão.
+- **Administração:** Dados e empresas.
+
+No computador, a barra ocupa no máximo 10% da largura da tela, limitada a 154 pixels, e destaca a tela atual. Em telas de até 900 pixels, o botão de menu abre uma lateral sobreposta com nomes completos; selecionar uma tela, clicar fora ou pressionar Esc fecha o menu. A navegação é omitida na impressão das demonstrações.
 
 ## Plano de contas e pesquisa visual
 
